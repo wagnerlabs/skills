@@ -7,11 +7,14 @@ description: "User-invoked only — do NOT run automatically. Sends a review pac
 
 > **This skill is user-invoked only.** Do not run it automatically after implementation, RCA, or planning. Wait for the user to explicitly request it.
 
-Choose the scenario based on what you just completed:
+Invoke at one of four checkpoints:
 
-- You just finished investigating a bug (RCA) and have not started fixing it → `independent-rca`. Claude performs its own independent RCA from scratch — does NOT see yours.
-- You just created or updated a plan document (for a bug fix, feature, or anything else) → `plan-review`. Claude reviews and critiques the plan.
-- You just finished implementing code changes → `post-implementation-review`. Claude reviews the changes against the plan or user requirements.
+| Scenario | When | What Claude does |
+|---|---|---|
+| `independent-rca` | After your own RCA, before fixing a bug | Performs its own independent RCA from scratch — does NOT see yours |
+| `plan-review` | After drafting a feature plan, before implementing | Reviews and critiques the plan |
+| `post-implementation-review` | After implementation, before finalizing | Reviews the changes against the plan or user requirements |
+| `document-review` | After drafting or revising a non-technical artifact (business doc, product analysis, strategy work, email, spec, etc.) | Performs its own independent analysis from the user's inputs, then compares against your output for fidelity, clarity, logic, completeness, and soundness |
 
 ## Non-negotiables
 
@@ -51,7 +54,7 @@ The packet must contain the sections below — no more, no less.
 
 ### Scenario
 
-One of: `independent-rca`, `plan-review`, `post-implementation-review`.
+One of: `independent-rca`, `plan-review`, `post-implementation-review`, `document-review`.
 
 ### Review target in repository
 
@@ -66,12 +69,15 @@ Tell Claude what to look at. Examples:
 
 All user-typed messages from this session, verbatim and in chronological order. Include only the text the user actually typed — do not expand @-mentions, and do not include attached context blocks (open editor tabs, inlined file contents, skill text, git diffs, or other automatically injected context). If the user attached images, note where each image appeared in the conversation and list its path under `/tmp/claude-second-opinion-images/` so Claude can read it.
 
-### Artifact under review (plan-review and post-implementation-review only)
+### Artifact under review (plan-review, post-implementation-review, and document-review only)
 
 **Omit this entire section for `independent-rca`.** Claude must not see your analysis — it performs its own from scratch.
 
 - For `plan-review`: if the plan exists as a file on disk, provide only the file path (e.g., "See plan at `docs/plan.md`"). Do NOT copy, paste, or summarize the plan contents into this packet — Claude will read the file directly. Only inline the plan text if no plan file exists on disk.
 - For `post-implementation-review`: a short implementation summary, intended behavior, and the path to the plan markdown file if one exists (so Claude can read it). Do not copy plan contents into the packet. Do not include large diff excerpts unless strictly necessary.
+- For `document-review`: structure this section in two clearly labeled parts:
+  1. **User's request** — what the user asked for (e.g., "analyze competitor pricing," "draft investor email," "recommend a GTM channel"). One sentence.
+  2. **Claude's output** — your complete analysis, recommendations, or drafted artifact. If it was written to a file on disk, provide only the file path — do not inline the contents. Inline only if it lives solely in the conversation. Be explicit about which parts are the user's stated inputs and which are your analysis, reasoning, or additions.
 
 ## Validate the packet before sending
 
@@ -92,7 +98,7 @@ tail -5 /tmp/claude-second-opinion.md
 **Pass criteria:**
 - Exactly 1 `### Scenario` heading
 - For `independent-rca`: 0 `### Artifact under review` headings
-- For `plan-review` / `post-implementation-review`: exactly 1 `### Artifact under review` heading
+- For `plan-review` / `post-implementation-review` / `document-review`: exactly 1 `### Artifact under review` heading
 - Line count is reasonable (typically under 200 lines; investigate if over 300)
 
 If structural validation fails, `rm -f /tmp/claude-second-opinion.md` and rewrite from scratch — do not patch the file.
@@ -108,16 +114,20 @@ If any content issues are found, `rm -f /tmp/claude-second-opinion.md` and rewri
 
 ## Run Claude from the repository root
 
+**Important: use a 10-minute timeout when executing this command, as Claude's analysis of a full repo can take several minutes.**
+
 Run this as a shell command. Set `SCENARIO` to match the packet.
 
 ```sh
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-SCENARIO="independent-rca"  # set to: independent-rca, plan-review, or post-implementation-review
+SCENARIO="independent-rca"  # set to: independent-rca, plan-review, post-implementation-review, or document-review
 
 if [ "$SCENARIO" = "independent-rca" ]; then
   PROMPT="Read the review packet from stdin. You are performing an independent root-cause analysis. The packet contains only the user transcript and a pointer to the repository — do NOT treat it as containing a prior analysis. If the packet references image files, read them with the Read tool. Inspect the repository directly using your allowed tools. Return: your root-cause hypothesis, supporting evidence from the codebase, suggested fix approach, confidence level, and any questions for the user that would help narrow the diagnosis."
 elif [ "$SCENARIO" = "plan-review" ]; then
   PROMPT="Read the review packet from stdin. You are reviewing an implementation plan. If the packet references image files, read them with the Read tool. Inspect the repository directly using your allowed tools and use independent judgment. Critique the plan for correctness, completeness, safety, and maintainability. Return: verdict, key issues, recommended changes, missing considerations, and any questions for the user."
+elif [ "$SCENARIO" = "document-review" ]; then
+  PROMPT="Read the review packet from stdin. You are providing a second opinion on a non-technical artifact (business document, product analysis, strategy work, email, spec, or similar). Work in two phases. PHASE 1 — INDEPENDENT ANALYSIS: Read only the user transcript and inspect the repository for context. Based solely on what the user asked for and the information available, form your own independent analysis, recommendations, or conclusions. Write this up before proceeding to Phase 2. PHASE 2 — COMPARISON: Now read the 'Artifact under review' section containing the other Claude's output. Compare your independent conclusions against theirs. Evaluate: (1) fidelity — does the output faithfully reflect what the user actually said, without adding unsupported claims, mischaracterizing user inputs, or injecting assumptions? (2) divergences — where do your conclusions differ, and why? (3) clarity and logic — is the argument coherent, well-structured, and free of gaps? (4) completeness — are there obvious omissions given the user's stated goals? (5) soundness — are conclusions well-supported and recommendations actionable? If the packet references image files, read them with the Read tool. Return: your independent analysis (Phase 1), then the comparison (Phase 2) covering verdict, agreements, divergences with reasoning, fidelity issues, recommended changes, and any questions for the user."
 else
   PROMPT="Read the review packet from stdin. You are reviewing a completed implementation. If the packet references image files, read them with the Read tool. Inspect the repository directly using your allowed tools and use independent judgment. Evaluate correctness, safety, maintainability, and fidelity to the plan or user requirements. Return: verdict, key issues, recommended changes, missing tests or checks, and any questions for the user."
 fi
@@ -141,6 +151,7 @@ cd "$REPO_ROOT" && claude -p \
 2. Claude's feedback is advisory. Use your own judgment throughout.
 3. For `independent-rca`: compare Claude's RCA with your own. Evaluate both and use your best judgment for the fix.
 4. For `plan-review` and `post-implementation-review`: apply only material improvements to correctness, safety, maintainability, or clarity.
-5. **If Claude's feedback raises questions needing user input or preference, ask the user rather than making assumptions.**
-6. Briefly note any material changes you adopted from the review.
-7. If the Claude review could not be run, say that explicitly before proceeding.
+5. For `document-review`: compare Claude's independent analysis (Phase 1) with your own. Where conclusions diverge, evaluate both on their merits. Correct any fidelity issues Claude flagged — places where your output diverged from or added to what the user actually said. Apply improvements to clarity, logic, and completeness only where material.
+6. **If Claude's feedback raises questions needing user input or preference, ask the user rather than making assumptions.**
+7. Briefly note any material changes you adopted from the review.
+8. If the Claude review could not be run, say that explicitly before proceeding.
