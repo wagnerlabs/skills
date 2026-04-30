@@ -30,7 +30,9 @@ Compose the packet content in your head first, then write it to disk in one shot
 First create a unique per-run directory and record the printed paths:
 
 ```sh
-RUN_DIR="$(mktemp -d "${TMPDIR:-/tmp}/gpt-second-opinion.XXXXXX")"
+TMP_BASE="${TMPDIR:-/tmp}"
+TMP_BASE="${TMP_BASE%/}"
+RUN_DIR="$(mktemp -d "$TMP_BASE/gpt-second-opinion.XXXXXX")"
 PACKET_PATH="$RUN_DIR/packet.md"
 OUT_PATH="$RUN_DIR/output.txt"
 IMAGE_DIR="$RUN_DIR/images"
