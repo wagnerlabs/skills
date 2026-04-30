@@ -1,11 +1,22 @@
 ---
 name: claude-second-opinion
-description: "User-invoked only — do NOT run automatically. Sends a review packet to Claude Opus 4.6 via the CLI, pointed at the full repo in read-only mode. The user will explicitly ask for this when they want it."
+description: "User-invoked only — do NOT run automatically. Sends a review packet to Claude Opus 4.7 via the CLI, pointed at the full repo in read-only mode. The user will explicitly ask for this when they want it."
+args: "[version]"
 ---
 
 # Claude second opinion
 
 > **This skill is user-invoked only.** Do not run it automatically after implementation, RCA, or planning. Wait for the user to explicitly request it.
+
+## Usage
+
+```
+/claude-second-opinion [version]
+```
+
+- `/claude-second-opinion` — uses Opus 4.7 with `max` effort (default)
+- `/claude-second-opinion 4.6` — uses Opus 4.6 with `max` effort
+- `/claude-second-opinion 4.5` — uses Opus 4.5 with `high` effort (its maximum)
 
 Invoke at one of four checkpoints:
 
@@ -122,6 +133,23 @@ Run this as a shell command. Set `SCENARIO` to match the packet.
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 SCENARIO="independent-rca"  # set to: independent-rca, plan-review, post-implementation-review, or document-review
 
+# Model selection based on skill argument (default: opus 4.7)
+# Usage:
+#   /claude-second-opinion      → uses claude-opus-4-7 with effort "max"
+#   /claude-second-opinion 4.6  → uses claude-opus-4-6 with effort "max"
+#   /claude-second-opinion 4.5  → uses claude-opus-4-5-20251101 with effort "high"
+VERSION_ARG="{{args}}"
+if [ "$VERSION_ARG" = "4.5" ]; then
+  MODEL="claude-opus-4-5-20251101"
+  EFFORT="high"  # Opus 4.5 max is "high"
+elif [ "$VERSION_ARG" = "4.6" ]; then
+  MODEL="claude-opus-4-6"
+  EFFORT="max"   # Opus 4.6 supports "max"
+else
+  MODEL="claude-opus-4-7"
+  EFFORT="max"   # Opus 4.7 supports "max"
+fi
+
 if [ "$SCENARIO" = "independent-rca" ]; then
   PROMPT="Read the review packet from stdin. You are performing an independent root-cause analysis. The packet contains only the user transcript and a pointer to the repository — do NOT treat it as containing a prior analysis. If the packet references image files, read them with the Read tool. Inspect the repository directly using your allowed tools. Return: your root-cause hypothesis, supporting evidence from the codebase, suggested fix approach, confidence level, and any questions for the user that would help narrow the diagnosis."
 elif [ "$SCENARIO" = "plan-review" ]; then
@@ -133,8 +161,8 @@ else
 fi
 
 cd "$REPO_ROOT" && claude -p \
-  --model claude-opus-4-6 \
-  --effort max \
+  --model "$MODEL" \
+  --effort "$EFFORT" \
   --permission-mode default \
   --tools "Bash,Read,Grep,Glob" \
   --allowedTools "Read,Grep,Glob,Bash(pwd),Bash(ls:*),Bash(git:*)" \

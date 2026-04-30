@@ -1,6 +1,6 @@
 ---
 name: gpt-second-opinion
-description: "User-invoked only — do NOT run automatically. Sends a review packet to GPT-5.4 via the Codex CLI, pointed at the full repo in read-only sandbox mode. The user will explicitly ask for this when they want it."
+description: "User-invoked only — do NOT run automatically. Sends a review packet to GPT-5.5 via the Codex CLI, pointed at the full repo in read-only sandbox mode. The user will explicitly ask for this when they want it."
 ---
 
 # GPT second opinion
@@ -133,7 +133,7 @@ else
 fi
 
 cd "$REPO_ROOT" && codex exec \
-  -m gpt-5.4 \
+  -m gpt-5.5 \
   -c model_reasoning_effort=xhigh \
   -c approval_policy=never \
   --sandbox read-only \
