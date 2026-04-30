@@ -18,34 +18,53 @@ Invoke at one of four checkpoints:
 
 ## Non-negotiables
 
-- Always include every user-typed message from the current session verbatim, in chronological order. Include only the text the user actually typed — do not expand @-mentions, and do not include attached context blocks (open editor tabs, inlined file contents, skill text, git diffs, or other automatically injected context). If the user attached images in any message, save them to `/tmp/gpt-second-opinion-images/` and list their paths in the packet.
+- Always include every user-typed message from the current session verbatim, in chronological order. Include only the text the user actually typed — do not expand @-mentions, and do not include attached context blocks (open editor tabs, inlined file contents, skill text, git diffs, or other automatically injected context). If the user attached images in any message, save them to the generated per-run images directory and list each resolved absolute image path in the packet.
 - **Deduplicate repeated user messages.** If the same user message appears multiple times in your context (from context reloading, conversation resumption, etc.), include it only once at its first chronological occurrence. Deduplicate *before* writing the packet, not after.
 - If you cannot recover every prior user message or image, say so explicitly.
 - Keep the packet minimal. Do not paste large code excerpts, repository summaries, or diff excerpts unless strictly necessary. GPT inspects the repository directly and forms its own judgment.
 
 ## Build the review packet
 
-Compose the packet content in your head first, then write it to disk in one shot using shell commands. **Do not use file-editing tools** (ApplyPatch, WriteFile, EditFile, etc.) for `/tmp/gpt-second-opinion.md` — they are unreliable for temp files and frequently produce residual content, partial overwrites, or stale reads.
+Compose the packet content in your head first, then write it to disk in one shot using shell commands. **Do not use file-editing tools** (ApplyPatch, WriteFile, EditFile, etc.) for the packet — they are unreliable for temp files and frequently produce residual content, partial overwrites, or stale reads.
+
+First create a unique per-run directory and record the printed paths:
+
+```sh
+RUN_DIR="$(mktemp -d "${TMPDIR:-/tmp}/gpt-second-opinion.XXXXXX")"
+PACKET_PATH="$RUN_DIR/packet.md"
+OUT_PATH="$RUN_DIR/output.txt"
+IMAGE_DIR="$RUN_DIR/images"
+mkdir -p "$IMAGE_DIR"
+printf 'Second-opinion run directory: %s\n' "$RUN_DIR"
+printf 'Packet path: %s\n' "$PACKET_PATH"
+printf 'Output path: %s\n' "$OUT_PATH"
+printf 'Images directory: %s\n' "$IMAGE_DIR"
+```
+
+Use the same generated paths for every later step in this invocation. If a later command runs in a fresh shell, substitute the literal path printed above (for example, `/var/folders/.../gpt-second-opinion.AbC123/packet.md`) instead of relying on `$PACKET_PATH`, `$OUT_PATH`, `$IMAGE_DIR`, or `$RUN_DIR` still being defined.
 
 **Required method — shell heredoc or Python one-liner:**
 
 ```sh
-rm -f /tmp/gpt-second-opinion.md
-cat > /tmp/gpt-second-opinion.md << 'PACKET_EOF'
+PACKET_PATH="/var/folders/.../gpt-second-opinion.AbC123/packet.md"
+cat > "$PACKET_PATH" << 'PACKET_EOF'
 (entire packet content here)
 PACKET_EOF
 ```
 
+Replace the example path with the literal packet path printed during setup.
+
 If the packet is too large for a single heredoc (shell truncation or escaping issues), use a Python one-liner instead:
 
 ```sh
-rm -f /tmp/gpt-second-opinion.md
-python3 -c "
+PACKET_PATH="/var/folders/.../gpt-second-opinion.AbC123/packet.md"
+PACKET_PATH="$PACKET_PATH" python3 -c '
+import os
 import sys
+from pathlib import Path
 content = sys.stdin.read()
-with open('/tmp/gpt-second-opinion.md', 'w') as f:
-    f.write(content)
-" << 'PACKET_EOF'
+Path(os.environ["PACKET_PATH"]).write_text(content)
+' << 'PACKET_EOF'
 (entire packet content here)
 PACKET_EOF
 ```
@@ -67,7 +86,7 @@ Tell GPT what to look at. Examples:
 
 ### Full verbatim user transcript
 
-All user-typed messages from this session, verbatim and in chronological order. Include only the text the user actually typed — do not expand @-mentions, and do not include attached context blocks (open editor tabs, inlined file contents, skill text, git diffs, or other automatically injected context). If the user attached images, note where each image appeared in the conversation and list its path under `/tmp/gpt-second-opinion-images/` so GPT can read it.
+All user-typed messages from this session, verbatim and in chronological order. Include only the text the user actually typed — do not expand @-mentions, and do not include attached context blocks (open editor tabs, inlined file contents, skill text, git diffs, or other automatically injected context). If the user attached images, note where each image appeared in the conversation and list its resolved absolute path under the generated per-run images directory so GPT can read it.
 
 ### Artifact under review (plan-review, post-implementation-review, and document-review only)
 
@@ -81,18 +100,19 @@ All user-typed messages from this session, verbatim and in chronological order. 
 
 ## Validate the packet before sending
 
-After writing, validate using **shell commands only** (not file-reading tools — they can disagree with the actual file content for `/tmp` paths):
+After writing, validate using **shell commands only** (not file-reading tools — they can disagree with the actual file content for temp paths). If this is a new shell command, substitute the literal packet path printed during setup:
 
 ```sh
 # Structural checks — all must pass
+PACKET_PATH="/var/folders/.../gpt-second-opinion.AbC123/packet.md"
 echo "=== Structural validation ==="
-echo "Scenario count: $(grep -c '^### Scenario' /tmp/gpt-second-opinion.md)"
-echo "Artifact count: $(grep -c '^### Artifact under review' /tmp/gpt-second-opinion.md)"
-echo "Line count: $(wc -l < /tmp/gpt-second-opinion.md)"
+echo "Scenario count: $(grep -c '^### Scenario' "$PACKET_PATH")"
+echo "Artifact count: $(grep -c '^### Artifact under review' "$PACKET_PATH")"
+echo "Line count: $(wc -l < "$PACKET_PATH")"
 echo "=== First 5 and last 5 lines ==="
-head -5 /tmp/gpt-second-opinion.md
+head -5 "$PACKET_PATH"
 echo "..."
-tail -5 /tmp/gpt-second-opinion.md
+tail -5 "$PACKET_PATH"
 ```
 
 **Pass criteria:**
@@ -101,26 +121,28 @@ tail -5 /tmp/gpt-second-opinion.md
 - For `plan-review` / `post-implementation-review` / `document-review`: exactly 1 `### Artifact under review` heading
 - Line count is reasonable (typically under 200 lines; investigate if over 300)
 
-If structural validation fails, `rm -f /tmp/gpt-second-opinion.md` and rewrite from scratch — do not patch the file.
+If structural validation fails, rewrite the packet from scratch at the same generated packet path — do not patch the file.
 
-**Then do a content review.** Read the full file back using `cat /tmp/gpt-second-opinion.md` (not file-reading tools) and check for:
+**Then do a content review.** Read the full file back using `cat /var/folders/.../gpt-second-opinion.AbC123/packet.md` or `cat "$PACKET_PATH"` when `$PACKET_PATH` is defined in the same shell command (not file-reading tools) and check for:
 
 - **Duplicate user messages** — the same message appearing more than once (from context reloading, conversation resumption, etc.). This means deduplication before writing was incomplete.
 - **Redundant sections** — the same information stated in multiple places (e.g., the review target restating what's already in the transcript, or the artifact section repeating the review target).
 - **Accidentally included context** — attached context blocks, expanded @-mentions, inlined file contents, skill text, or git diffs that leaked into the user transcript.
 - **Bloat** — large code excerpts, diff dumps, or repository summaries that GPT doesn't need (it reads the repo directly).
 
-If any content issues are found, `rm -f /tmp/gpt-second-opinion.md` and rewrite from scratch — do not patch the file.
+If any content issues are found, rewrite the packet from scratch at the same generated packet path — do not patch the file.
 
 ## Run GPT from the repository root
 
 **Important: use a 10-minute timeout when executing this command, as GPT analysis of a full repo can take several minutes.**
 
-Run this as a shell command. Set `SCENARIO` to match the packet.
+Run this as a shell command. Set `SCENARIO` to match the packet, and substitute the literal packet and output paths printed during setup.
 
 ```sh
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 SCENARIO="independent-rca"  # set to: independent-rca, plan-review, post-implementation-review, or document-review
+PACKET_PATH="/var/folders/.../gpt-second-opinion.AbC123/packet.md"
+OUT_PATH="/var/folders/.../gpt-second-opinion.AbC123/output.txt"
 
 if [ "$SCENARIO" = "independent-rca" ]; then
   PROMPT="Read the review packet appended below from stdin. You are performing an independent root-cause analysis. The packet contains only the user transcript and a pointer to the repository — do NOT treat it as containing a prior analysis. If the packet references image files, read them. Inspect the repository directly. Return: your root-cause hypothesis, supporting evidence from the codebase, suggested fix approach, confidence level, and any questions for the user that would help narrow the diagnosis."
@@ -139,18 +161,19 @@ cd "$REPO_ROOT" && codex exec \
   --sandbox read-only \
   -C "$REPO_ROOT" \
   --ephemeral \
-  -o /tmp/gpt-second-opinion.out.txt \
+  -o "$OUT_PATH" \
   "$PROMPT" \
-  < /tmp/gpt-second-opinion.md
+  < "$PACKET_PATH"
 ```
 
 ## After the review
 
-1. Read `/tmp/gpt-second-opinion.out.txt`.
-2. GPT's feedback is advisory. Use your own judgment throughout.
-3. For `independent-rca`: compare GPT's RCA with your own. Evaluate both and use your best judgment for the fix.
-4. For `plan-review` and `post-implementation-review`: apply only material improvements to correctness, safety, maintainability, or clarity.
-5. For `document-review`: compare GPT's independent analysis (Phase 1) with your own. Where conclusions diverge, evaluate both on their merits. Correct any fidelity issues GPT flagged — places where your output diverged from or added to what the user actually said. Apply improvements to clarity, logic, and completeness only where material.
-6. **If GPT's feedback raises questions needing user input or preference, ask the user rather than making assumptions.**
-7. Briefly note any material changes you adopted from the review.
-8. If the GPT review could not be run, say that explicitly before proceeding.
+1. Tell the user the second-opinion run directory path so they can inspect the packet and output if needed.
+2. Read the generated output path, for example `/var/folders/.../gpt-second-opinion.AbC123/output.txt`.
+3. GPT's feedback is advisory. Use your own judgment throughout.
+4. For `independent-rca`: compare GPT's RCA with your own. Evaluate both and use your best judgment for the fix.
+5. For `plan-review` and `post-implementation-review`: apply only material improvements to correctness, safety, maintainability, or clarity.
+6. For `document-review`: compare GPT's independent analysis (Phase 1) with your own. Where conclusions diverge, evaluate both on their merits. Correct any fidelity issues GPT flagged — places where your output diverged from or added to what the user actually said. Apply improvements to clarity, logic, and completeness only where material.
+7. **If GPT's feedback raises questions needing user input or preference, ask the user rather than making assumptions.**
+8. Briefly note any material changes you adopted from the review.
+9. If the GPT review could not be run, say that explicitly before proceeding.
