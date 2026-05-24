@@ -160,6 +160,12 @@ Claude's analysis of a full repo can take several minutes. Complex reviews somet
 
 Run this as a shell command. Set `SCENARIO` to match the packet, and substitute the literal packet and output paths printed during setup.
 
+By default, the command auto-selects Claude execution mode:
+
+- `CLAUDE_SECOND_OPINION_MODE=auto` (default) uses `--bare` inside Hermes worker/profile contexts and normal `claude -p` elsewhere.
+- `CLAUDE_SECOND_OPINION_MODE=bare` forces Hermes-worker style execution. This is recommended for Hermes workers because `--bare` skips hooks, LSP, plugin sync, attribution, auto-memory, background prefetches, keychain reads, OAuth/session discovery, and CLAUDE.md auto-discovery. In the AGE-62 bridge setup it uses the API-key/apiKeyHelper path supplied to the real Claude child process while the surrounding shell stays credential-scrubbed.
+- `CLAUDE_SECOND_OPINION_MODE=normal` forces normal Claude Code execution for personal terminals or other runtimes that should use the caller's own Claude auth and normal Claude Code behavior.
+
 ```sh
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 SCENARIO="independent-rca"  # set to: independent-rca, plan-review, post-implementation-review, document-review, or analysis-review
@@ -183,6 +189,26 @@ else
   EFFORT="max"   # Opus 4.7 supports "max"
 fi
 
+# Claude execution mode. Keep normal Claude Code behavior available for
+# personal terminals while defaulting Hermes workers/profiles to --bare.
+CLAUDE_SECOND_OPINION_MODE="${CLAUDE_SECOND_OPINION_MODE:-auto}"
+if [ "$CLAUDE_SECOND_OPINION_MODE" = "auto" ]; then
+  if [ -n "${HERMES_HOME:-}" ] || [ -n "${HERMES_PROFILE:-}" ] || [ -n "${HERMES_TASK_ID:-}" ] || [ -n "${HERMES_KANBAN_TASK:-}" ]; then
+    CLAUDE_SECOND_OPINION_MODE="bare"
+  else
+    CLAUDE_SECOND_OPINION_MODE="normal"
+  fi
+fi
+
+case "$CLAUDE_SECOND_OPINION_MODE" in
+  bare) CLAUDE_BARE_FLAG="--bare" ;;
+  normal) CLAUDE_BARE_FLAG="" ;;
+  *)
+    echo "Invalid CLAUDE_SECOND_OPINION_MODE='$CLAUDE_SECOND_OPINION_MODE' (expected auto, bare, or normal)" >&2
+    exit 2
+    ;;
+esac
+
 if [ "$SCENARIO" = "independent-rca" ]; then
   PROMPT="Read the review packet from stdin. You are performing an independent root-cause analysis. The packet contains only the user transcript and a pointer to the repository — do NOT treat it as containing a prior analysis. If the packet references image files, read them with the Read tool. Inspect the repository directly using your allowed tools. Return: your root-cause hypothesis, supporting evidence from the codebase, suggested fix approach, confidence level, and any questions for the user that would help narrow the diagnosis."
 elif [ "$SCENARIO" = "plan-review" ]; then
@@ -195,12 +221,12 @@ else
   PROMPT="Read the review packet from stdin. You are reviewing a completed implementation. If the packet references image files, read them with the Read tool. Inspect the repository directly using your allowed tools and use independent judgment. Evaluate correctness, safety, maintainability, and fidelity to the plan or user requirements. Return: verdict, key issues, recommended changes, missing tests or checks, and any questions for the user."
 fi
 
-cd "$REPO_ROOT" && claude -p \
+cd "$REPO_ROOT" && claude ${CLAUDE_BARE_FLAG:+$CLAUDE_BARE_FLAG} -p \
   --model "$MODEL" \
   --effort "$EFFORT" \
   --permission-mode default \
   --tools "Bash,Read,Grep,Glob" \
-  --allowedTools "Read,Grep,Glob,Bash(pwd),Bash(ls:*),Bash(git:*)" \
+  --allowedTools "Read,Grep,Glob,Bash(pwd),Bash(ls *),Bash(git *)" \
   --max-turns 100 \
   --output-format text \
   "$PROMPT" \
