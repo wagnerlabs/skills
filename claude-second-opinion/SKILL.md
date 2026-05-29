@@ -1,6 +1,6 @@
 ---
 name: claude-second-opinion
-description: "Sends a time-expensive review packet to Claude Opus 4.7 via the CLI, pointed at the full repo in read-only mode. Use when the user asks or when an agent judges that an independent second opinion would materially improve non-trivial RCA, plans, implementations, documents, or analysis responses; generally at most once per non-trivial task/artifact."
+description: "Sends a time-expensive review packet to Claude Opus 4.8 via the CLI, pointed at the full repo in read-only mode. Use when the user asks or when an agent judges that an independent second opinion would materially improve non-trivial RCA, plans, implementations, documents, or analysis responses; generally at most once per non-trivial task/artifact."
 args: "[version]"
 ---
 
@@ -19,7 +19,8 @@ args: "[version]"
 /claude-second-opinion [version]
 ```
 
-- `/claude-second-opinion` — uses Opus 4.7 with `max` effort (default)
+- `/claude-second-opinion` — uses Opus 4.8 with `max` effort/thinking (default)
+- `/claude-second-opinion 4.7` — uses Opus 4.7 with `max` effort
 - `/claude-second-opinion 4.6` — uses Opus 4.6 with `max` effort
 - `/claude-second-opinion 4.5` — uses Opus 4.5 with `high` effort (its maximum)
 
@@ -172,9 +173,10 @@ SCENARIO="independent-rca"  # set to: independent-rca, plan-review, post-impleme
 PACKET_PATH="/var/folders/.../claude-second-opinion.AbC123/packet.md"
 OUT_PATH="/var/folders/.../claude-second-opinion.AbC123/output.txt"
 
-# Model selection based on skill argument (default: opus 4.7)
+# Model selection based on skill argument (default: opus 4.8)
 # Usage:
-#   /claude-second-opinion      → uses claude-opus-4-7 with effort "max"
+#   /claude-second-opinion      → uses claude-opus-4-8 with effort "max"
+#   /claude-second-opinion 4.7  → uses claude-opus-4-7 with effort "max"
 #   /claude-second-opinion 4.6  → uses claude-opus-4-6 with effort "max"
 #   /claude-second-opinion 4.5  → uses claude-opus-4-5-20251101 with effort "high"
 VERSION_ARG="{{args}}"
@@ -184,9 +186,12 @@ if [ "$VERSION_ARG" = "4.5" ]; then
 elif [ "$VERSION_ARG" = "4.6" ]; then
   MODEL="claude-opus-4-6"
   EFFORT="max"   # Opus 4.6 supports "max"
-else
+elif [ "$VERSION_ARG" = "4.7" ]; then
   MODEL="claude-opus-4-7"
   EFFORT="max"   # Opus 4.7 supports "max"
+else
+  MODEL="claude-opus-4-8"
+  EFFORT="max"   # Opus 4.8 supports "max"
 fi
 
 # Claude execution mode. Keep normal Claude Code behavior available for
