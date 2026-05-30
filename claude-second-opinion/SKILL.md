@@ -1,6 +1,6 @@
 ---
 name: claude-second-opinion
-description: "Sends a time-expensive review packet to Claude Opus 4.8 via the CLI, pointed at the full repo in read-only mode. Use when the user asks or when an agent judges that an independent second opinion would materially improve non-trivial RCA, plans, implementations, documents, or analysis responses; generally at most once per non-trivial task/artifact."
+description: "Sends a time-expensive, blocking review packet to Claude Opus 4.8 via the CLI, pointed at the full repo in read-only mode. Use when the user asks or when an agent judges that an independent second opinion would materially improve non-trivial RCA, plans, implementations, documents, or analysis responses; generally at most once per non-trivial task/artifact. Once invoked, the current task must pause until the second-opinion process is complete and considered."
 args: "[version]"
 ---
 
@@ -11,6 +11,9 @@ args: "[version]"
 - Run this skill when the user explicitly asks.
 - You may also use it, at your discretion, for non-trivial artifacts where an independent review would materially improve quality.
 - This skill is time-expensive and optional by default. It is highly recommended after a non-trivial implementation plan is ready for review, before implementing.
+- Once this skill is invoked for a task/artifact, it is **blocking for that task**: do not proceed with the fix, implementation, plan revision, document finalization, user-facing answer, or other reviewed work until the packet has been built and validated, Claude has returned its output, you have read the output, and you have decided which feedback to adopt.
+- Do **not** run this skill in parallel while continuing the same workstream. It is acceptable to use a background process only to avoid tool timeouts, but you must wait for completion and consume the review output before advancing the task under review.
+- If the second-opinion run cannot be completed, explicitly tell the user it could not be run before proceeding; do not silently continue as if the blocking review happened.
 - Default frequency: at most once per non-trivial task. You may run it once more for a materially different downstream artifact with important differences, such as an implementation that significantly diverged from the reviewed plan. Avoid reruns for minor edits, small follow-ups, or unchanged artifacts.
 
 ## Usage
