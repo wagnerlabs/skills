@@ -1,7 +1,7 @@
 ---
 name: claude-second-opinion
-description: "Sends a time-expensive, blocking review packet to Claude Opus 4.8 via the CLI, pointed at the full repo in read-only mode. Use when the user asks or when an agent judges that an independent second opinion would materially improve non-trivial RCA, plans, implementations, documents, or analysis responses; generally at most once per non-trivial task/artifact. Once invoked, the current task must pause until the second-opinion process is complete and considered."
-args: "[version]"
+description: "Sends a time-expensive, blocking review packet to Claude Fable 5 via the CLI on xhigh effort by default, or max effort when specified, pointed at the full repo in read-only mode. Use when the user asks or when an agent judges that an independent second opinion would materially improve non-trivial RCA, plans, implementations, documents, or analysis responses; generally at most once per non-trivial task/artifact. Once invoked, the current task must pause until the second-opinion process is complete and considered."
+args: "[effort]"
 ---
 
 # Claude second opinion
@@ -19,13 +19,13 @@ args: "[version]"
 ## Usage
 
 ```
-/claude-second-opinion [version]
+/claude-second-opinion [effort]
 ```
 
-- `/claude-second-opinion` — uses Opus 4.8 with `max` effort/thinking (default)
-- `/claude-second-opinion 4.7` — uses Opus 4.7 with `max` effort
-- `/claude-second-opinion 4.6` — uses Opus 4.6 with `max` effort
-- `/claude-second-opinion 4.5` — uses Opus 4.5 with `high` effort (its maximum)
+- `/claude-second-opinion` — uses Fable 5 with `xhigh` effort (default)
+- `/claude-second-opinion max` — uses Fable 5 with `max` effort
+
+Opus version arguments are deprecated and unsupported. Use no effort argument or `max`.
 
 Use one of these scenarios:
 
@@ -176,25 +176,15 @@ SCENARIO="independent-rca"  # set to: independent-rca, plan-review, post-impleme
 PACKET_PATH="/var/folders/.../claude-second-opinion.AbC123/packet.md"
 OUT_PATH="/var/folders/.../claude-second-opinion.AbC123/output.txt"
 
-# Model selection based on skill argument (default: opus 4.8)
-# Usage:
-#   /claude-second-opinion      → uses claude-opus-4-8 with effort "max"
-#   /claude-second-opinion 4.7  → uses claude-opus-4-7 with effort "max"
-#   /claude-second-opinion 4.6  → uses claude-opus-4-6 with effort "max"
-#   /claude-second-opinion 4.5  → uses claude-opus-4-5-20251101 with effort "high"
-VERSION_ARG="{{args}}"
-if [ "$VERSION_ARG" = "4.5" ]; then
-  MODEL="claude-opus-4-5-20251101"
-  EFFORT="high"  # Opus 4.5 max is "high"
-elif [ "$VERSION_ARG" = "4.6" ]; then
-  MODEL="claude-opus-4-6"
-  EFFORT="max"   # Opus 4.6 supports "max"
-elif [ "$VERSION_ARG" = "4.7" ]; then
-  MODEL="claude-opus-4-7"
-  EFFORT="max"   # Opus 4.7 supports "max"
+MODEL="claude-fable-5"
+EFFORT_ARG="{{args}}"
+if [ -z "$EFFORT_ARG" ]; then
+  EFFORT="xhigh"
+elif [ "$EFFORT_ARG" = "max" ]; then
+  EFFORT="max"
 else
-  MODEL="claude-opus-4-8"
-  EFFORT="max"   # Opus 4.8 supports "max"
+  printf 'Unsupported claude-second-opinion effort: %s\nUse no argument for xhigh, or "max" for max effort.\nOpus version arguments are deprecated and unsupported.\n' "$EFFORT_ARG" >&2
+  exit 2
 fi
 
 # Claude execution mode. Keep normal Claude Code behavior available for
