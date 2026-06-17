@@ -1,7 +1,7 @@
 ---
 name: claude-second-opinion
-description: "Sends a time-expensive, blocking review packet to Claude Fable 5 via the CLI on xhigh effort by default, or max effort when specified, pointed at the full repo in read-only mode. Use when the user asks or when an agent judges that an independent second opinion would materially improve non-trivial RCA, plans, implementations, documents, or analysis responses; generally at most once per non-trivial task/artifact. Once invoked, the current task must pause until the second-opinion process is complete and considered."
-args: "[effort]"
+description: "Sends a time-expensive, blocking review packet to Claude Opus 4.8 via the CLI on max effort by default, with Claude Fable 5 available explicitly, pointed at the full repo in read-only mode. Use when the user asks or when an agent judges that an independent second opinion would materially improve non-trivial RCA, plans, implementations, documents, or analysis responses; generally at most once per non-trivial task/artifact. Once invoked, the current task must pause until the second-opinion process is complete and considered."
+args: "[model] [effort]"
 ---
 
 # Claude second opinion
@@ -19,13 +19,16 @@ args: "[effort]"
 ## Usage
 
 ```
-/claude-second-opinion [effort]
+/claude-second-opinion [model] [effort]
 ```
 
-- `/claude-second-opinion` — uses Fable 5 with `xhigh` effort (default)
-- `/claude-second-opinion max` — uses Fable 5 with `max` effort
+- `/claude-second-opinion` — uses Opus 4.8 with `max` effort (default)
+- `/claude-second-opinion opus` — uses Opus 4.8 with `max` effort
+- `/claude-second-opinion opus xhigh` — uses Opus 4.8 with `xhigh` effort
+- `/claude-second-opinion fable` — uses Fable 5 with `xhigh` effort
+- `/claude-second-opinion fable max` — uses Fable 5 with `max` effort
 
-Opus version arguments are deprecated and unsupported. Use no effort argument or `max`.
+Supported models are `opus` / `opus-4.8` and `fable` / `fable-5`. Supported effort values are `xhigh` and `max`. If you pass only an effort value, it applies to the default Opus 4.8 model.
 
 Use one of these scenarios:
 
@@ -176,15 +179,48 @@ SCENARIO="independent-rca"  # set to: independent-rca, plan-review, post-impleme
 PACKET_PATH="/var/folders/.../claude-second-opinion.AbC123/packet.md"
 OUT_PATH="/var/folders/.../claude-second-opinion.AbC123/output.txt"
 
-MODEL="claude-fable-5"
-EFFORT_ARG="{{args}}"
-if [ -z "$EFFORT_ARG" ]; then
-  EFFORT="xhigh"
-elif [ "$EFFORT_ARG" = "max" ]; then
-  EFFORT="max"
-else
-  printf 'Unsupported claude-second-opinion effort: %s\nUse no argument for xhigh, or "max" for max effort.\nOpus version arguments are deprecated and unsupported.\n' "$EFFORT_ARG" >&2
-  exit 2
+MODEL="claude-opus-4-8"
+EFFORT="max"
+CONFIG_ARG="{{args}}"
+if [ -n "$CONFIG_ARG" ]; then
+  set -- $CONFIG_ARG
+  if [ "$#" -gt 2 ]; then
+    printf 'Unsupported claude-second-opinion arguments: %s\nUse no argument for Opus 4.8 max, an effort only, or "<model> <effort>".\n' "$CONFIG_ARG" >&2
+    exit 2
+  fi
+
+  case "${1:-}" in
+    opus|opus-4.8|opus-4-8|claude-opus-4.8|claude-opus-4-8)
+      MODEL="claude-opus-4-8"
+      EFFORT="${2:-max}"
+      ;;
+    fable|fable-5|claude-fable-5)
+      MODEL="claude-fable-5"
+      EFFORT="${2:-xhigh}"
+      ;;
+    xhigh|max)
+      MODEL="claude-opus-4-8"
+      EFFORT="$1"
+      ;;
+    *)
+      printf 'Unsupported claude-second-opinion model or effort: %s\nSupported models: opus, opus-4.8, fable, fable-5. Supported efforts: xhigh, max.\n' "$1" >&2
+      exit 2
+      ;;
+  esac
+fi
+
+case "$EFFORT" in
+  xhigh|max) ;;
+  *)
+    printf 'Unsupported claude-second-opinion effort: %s\nSupported efforts: xhigh, max.\n' "$EFFORT" >&2
+    exit 2
+    ;;
+esac
+
+if [ "$MODEL" = "claude-opus-4-8" ] && [ "$EFFORT" != "max" ]; then
+  printf 'Warning: Opus 4.8 defaults to max effort; using explicitly requested effort: %s\n' "$EFFORT" >&2
+elif [ "$MODEL" = "claude-fable-5" ] && [ "$EFFORT" != "xhigh" ]; then
+  printf 'Warning: Fable 5 defaults to xhigh effort; using explicitly requested effort: %s\n' "$EFFORT" >&2
 fi
 
 # Claude execution mode. Keep normal Claude Code behavior available for
