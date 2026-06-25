@@ -1,6 +1,6 @@
 ---
 name: fusion-second-opinion
-description: "Sends a time-expensive, blocking review packet to OpenRouter Fusion via Codex CLI in a read-only sandbox, using Gemini 3 Flash, Kimi K2.6, and DeepSeek V4 Pro as analysis models synthesized by Claude Opus 4.8 through the OpenRouter API. Use when the user asks or when an agent judges that an independent multi-model second opinion would materially improve non-trivial RCA, plans, implementations, documents, or analysis responses; generally at most once per non-trivial task/artifact. Once invoked, the current task must pause until the Fusion review is complete and considered."
+description: "Sends a time-expensive, blocking review packet to OpenRouter Fusion via Codex CLI in a read-only sandbox, using selectable medium/high/xhigh model panels synthesized by Claude Opus 4.8 through the OpenRouter API. Defaults to high: Opus 4.8, GPT-5.5, and Gemini 3.1 Pro synthesized by Opus 4.8. Use when the user asks or when an agent judges that an independent multi-model second opinion would materially improve non-trivial RCA, plans, implementations, documents, or analysis responses; generally at most once per non-trivial task/artifact."
 ---
 
 # Fusion second opinion
@@ -14,6 +14,16 @@ description: "Sends a time-expensive, blocking review packet to OpenRouter Fusio
 - Do **not** run this skill in parallel while continuing the same workstream. It is acceptable to use a background process only to avoid tool timeouts, but you must wait for completion and consume the review output before advancing the task under review.
 - If the second-opinion run cannot be completed, explicitly tell the user it could not be run before proceeding; do not silently continue as if the blocking review happened.
 - Default frequency: at most once per non-trivial task. You may run it once more for a materially different downstream artifact with important differences, such as an implementation that significantly diverged from the reviewed plan. Avoid reruns for minor edits, small follow-ups, or unchanged artifacts.
+
+## Fusion levels
+
+High is the default. To request a different level, invoke this skill with one argument: `medium`, `high`, or `xhigh`.
+
+| Level | Synthesizer | Analysis panel |
+|---|---|---|
+| `medium` | `anthropic/claude-opus-4.8` | `google/gemini-3-flash-preview`, `moonshotai/kimi-k2.6`, `deepseek/deepseek-v4-pro` |
+| `high` (default) | `anthropic/claude-opus-4.8` | `anthropic/claude-opus-4.8`, `openai/gpt-5.5`, `google/gemini-3.1-pro-preview` |
+| `xhigh` | `anthropic/claude-opus-4.8` | `anthropic/claude-opus-4.8`, `openai/gpt-5.5`, `google/gemini-3.1-pro-preview`, `deepseek/deepseek-v4-pro` |
 
 Use one of these scenarios:
 
@@ -156,16 +166,36 @@ If any content issues are found, rewrite the packet from scratch at the same gen
 
 Fusion analysis of a full repo can take several minutes. Complex reviews sometimes take up to 10 minutes and occasionally take 10-20 minutes. Reviews over 30 minutes are suspect; ideally ask the user before killing a long-running review, but around 30 minutes you may decide to kill it using judgment.
 
-This workflow uses Codex as the local read-only repository agent and a temporary localhost proxy to inject OpenRouter's Fusion plugin. The proxy configures:
+This workflow uses Codex as the local read-only repository agent and a temporary localhost proxy to inject OpenRouter's Fusion plugin. The proxy configures the selected Fusion level:
 
-- Judge/synthesizer: `anthropic/claude-opus-4.8`
-- Analysis panel: `google/gemini-3-flash-preview`, `moonshotai/kimi-k2.6`, `deepseek/deepseek-v4-pro`
+- `medium`: Gemini 3 Flash, Kimi K2.6, and DeepSeek V4 Pro synthesized by Opus 4.8
+- `high` (default): Opus 4.8, GPT-5.5, and Gemini 3.1 Pro synthesized by Opus 4.8
+- `xhigh`: Opus 4.8, GPT-5.5, Gemini 3.1 Pro, and DeepSeek V4 Pro synthesized by Opus 4.8
 
-Run this as a shell command. Set `SCENARIO` to match the packet, and substitute the literal packet, output, log, and proxy paths printed during setup.
+Run this as a shell command. Set `SCENARIO` to match the packet, optionally set `FUSION_LEVEL` by invoking the skill with `medium`, `high`, or `xhigh`, and substitute the literal packet, output, log, and proxy paths printed during setup.
 
 ```sh
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 SCENARIO="independent-rca"  # set to: independent-rca, plan-review, post-implementation-review, document-review, or analysis-review
+FUSION_LEVEL="high"
+CONFIG_ARG="{{args}}"
+if [ -n "$CONFIG_ARG" ]; then
+  set -- $CONFIG_ARG
+  if [ "$#" -gt 1 ]; then
+    printf 'Unsupported fusion-second-opinion arguments: %s\nUse no argument for high, or one of: medium, high, xhigh.\n' "$CONFIG_ARG" >&2
+    exit 2
+  fi
+
+  case "${1:-}" in
+    medium|high|xhigh)
+      FUSION_LEVEL="$1"
+      ;;
+    *)
+      printf 'Unsupported fusion-second-opinion level: %s\nSupported levels: medium, high, xhigh. Default: high.\n' "$1" >&2
+      exit 2
+      ;;
+  esac
+fi
 PACKET_PATH="/var/folders/.../fusion-second-opinion.AbC123/packet.md"
 OUT_PATH="/var/folders/.../fusion-second-opinion.AbC123/output.txt"
 CODEX_LOG="/var/folders/.../fusion-second-opinion.AbC123/codex.log"
@@ -199,14 +229,34 @@ import urllib.request
 from socketserver import ThreadingMixIn
 
 PORT = int(sys.argv[1])
-FUSION_PLUGIN = {
-    "id": "fusion",
-    "model": "anthropic/claude-opus-4.8",
-    "analysis_models": [
+SYNTHESIZER_MODEL = "anthropic/claude-opus-4.8"
+FUSION_LEVEL = os.environ.get("FUSION_LEVEL", "high")
+FUSION_LEVELS = {
+    "medium": [
         "google/gemini-3-flash-preview",
         "moonshotai/kimi-k2.6",
         "deepseek/deepseek-v4-pro",
     ],
+    "high": [
+        "anthropic/claude-opus-4.8",
+        "openai/gpt-5.5",
+        "google/gemini-3.1-pro-preview",
+    ],
+    "xhigh": [
+        "anthropic/claude-opus-4.8",
+        "openai/gpt-5.5",
+        "google/gemini-3.1-pro-preview",
+        "deepseek/deepseek-v4-pro",
+    ],
+}
+if FUSION_LEVEL not in FUSION_LEVELS:
+    supported = ", ".join(sorted(FUSION_LEVELS))
+    raise SystemExit(f"Unsupported FUSION_LEVEL: {FUSION_LEVEL}. Supported levels: {supported}")
+
+FUSION_PLUGIN = {
+    "id": "fusion",
+    "model": SYNTHESIZER_MODEL,
+    "analysis_models": FUSION_LEVELS[FUSION_LEVEL],
 }
 HOP_BY_HOP = {"connection", "content-encoding", "content-length", "transfer-encoding"}
 
@@ -294,7 +344,7 @@ s.close()
 PY
 )"
 
-python3 "$PROXY_PATH" "$PORT" > "$PROXY_LOG" 2>&1 &
+FUSION_LEVEL="$FUSION_LEVEL" python3 "$PROXY_PATH" "$PORT" > "$PROXY_LOG" 2>&1 &
 PROXY_PID="$!"
 trap 'kill "$PROXY_PID" 2>/dev/null || true' EXIT
 sleep 1
