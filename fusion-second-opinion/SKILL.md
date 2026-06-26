@@ -1,6 +1,6 @@
 ---
 name: fusion-second-opinion
-description: "Sends a time-expensive, blocking review packet to OpenRouter Fusion via Codex CLI in a read-only sandbox, using selectable medium/high/xhigh model panels synthesized by Claude Opus 4.8 through the OpenRouter API. Defaults to high: Opus 4.8, GPT-5.5, and Gemini 3.1 Pro synthesized by Opus 4.8. Use when the user asks or when an agent judges that an independent multi-model second opinion would materially improve non-trivial RCA, plans, implementations, documents, or analysis responses; generally at most once per non-trivial task/artifact."
+description: "Sends a time-expensive, blocking review packet to OpenRouter Fusion via Codex CLI in a read-only sandbox, using selectable medium/high/xhigh model panels and optional OpenRouter API key selectors. Defaults to high: Opus 4.8, GPT-5.5, and Gemini 3.1 Pro synthesized by Opus 4.8. Use when the user asks or when an agent judges that an independent multi-model second opinion would materially improve non-trivial RCA, plans, implementations, documents, or analysis responses; generally at most once per non-trivial task/artifact."
 ---
 
 # Fusion second opinion
@@ -17,13 +17,31 @@ description: "Sends a time-expensive, blocking review packet to OpenRouter Fusio
 
 ## Fusion levels
 
-High is the default. To request a different level, invoke this skill with one argument: `medium`, `high`, or `xhigh`.
+High is the default. To request a different level, invoke this skill with one level argument: `medium`, `high`, or `xhigh`.
 
 | Level | Synthesizer | Analysis panel |
 |---|---|---|
 | `medium` | `anthropic/claude-opus-4.8` | `google/gemini-3-flash-preview`, `moonshotai/kimi-k2.6`, `deepseek/deepseek-v4-pro` |
 | `high` (default) | `anthropic/claude-opus-4.8` | `anthropic/claude-opus-4.8`, `openai/gpt-5.5`, `google/gemini-3.1-pro-preview` |
 | `xhigh` | `anthropic/claude-opus-4.8` | `anthropic/claude-opus-4.8`, `openai/gpt-5.5`, `google/gemini-3.1-pro-preview`, `deepseek/deepseek-v4-pro` |
+
+## OpenRouter API key selection
+
+Default behavior is unchanged: use `OPENROUTER_API_KEY`, either already exported or stored in `${XDG_CONFIG_HOME:-$HOME/.config}/openrouter/credentials.env`.
+
+To select a different key, pass one key selector argument in addition to the optional level, in any order:
+
+- `key:work` resolves to `OPENROUTER_API_KEY_WORK`.
+- `key:personal` resolves to `OPENROUTER_API_KEY_PERSONAL`.
+- `env:OPENROUTER_API_KEY_WORK` resolves to exactly `OPENROUTER_API_KEY_WORK`.
+
+Never pass a literal API key as an argument. Store named keys as environment variables, for example:
+
+```sh
+OPENROUTER_API_KEY=sk-or-default...
+OPENROUTER_API_KEY_WORK=sk-or-work...
+OPENROUTER_API_KEY_PERSONAL=sk-or-personal...
+```
 
 Use one of these scenarios:
 
@@ -41,7 +59,7 @@ Use one of these scenarios:
 - **Deduplicate repeated user messages.** If the same user message appears multiple times in your context (from context reloading, conversation resumption, etc.), include it only once at its first chronological occurrence. Deduplicate *before* writing the packet, not after.
 - If you cannot recover every prior user message or image, say so explicitly.
 - Keep the packet minimal. Do not paste large code excerpts, repository summaries, or diff excerpts unless strictly necessary. Fusion is driven by Codex in a read-only sandbox and inspects the repository directly.
-- The OpenRouter API key must come from `OPENROUTER_API_KEY`, either already exported or stored in `${XDG_CONFIG_HOME:-$HOME/.config}/openrouter/credentials.env`. Never print the key.
+- The OpenRouter API key must be selected from an environment variable, never passed literally. Default to `OPENROUTER_API_KEY`; selectors such as `key:work` resolve to named variables such as `OPENROUTER_API_KEY_WORK`. Never print the key.
 
 ## Build the review packet
 
@@ -172,29 +190,72 @@ This workflow uses Codex as the local read-only repository agent and a temporary
 - `high` (default): Opus 4.8, GPT-5.5, and Gemini 3.1 Pro synthesized by Opus 4.8
 - `xhigh`: Opus 4.8, GPT-5.5, Gemini 3.1 Pro, and DeepSeek V4 Pro synthesized by Opus 4.8
 
-Run this as a shell command. Set `SCENARIO` to match the packet, optionally set `FUSION_LEVEL` by invoking the skill with `medium`, `high`, or `xhigh`, and substitute the literal packet, output, log, and proxy paths printed during setup.
+Run this as a shell command. Set `SCENARIO` to match the packet, optionally set `FUSION_LEVEL` by invoking the skill with `medium`, `high`, or `xhigh`, optionally select a key with `key:<name>` or `env:<VAR>`, and substitute the literal packet, output, log, and proxy paths printed during setup.
 
 ```sh
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 SCENARIO="independent-rca"  # set to: independent-rca, plan-review, post-implementation-review, document-review, or analysis-review
 FUSION_LEVEL="high"
+FUSION_LEVEL_SET=""
+OPENROUTER_KEY_SELECTOR=""
+OPENROUTER_KEY_VAR="OPENROUTER_API_KEY"
 CONFIG_ARG="{{args}}"
 if [ -n "$CONFIG_ARG" ]; then
   set -- $CONFIG_ARG
-  if [ "$#" -gt 1 ]; then
-    printf 'Unsupported fusion-second-opinion arguments: %s\nUse no argument for high, or one of: medium, high, xhigh.\n' "$CONFIG_ARG" >&2
+  if [ "$#" -gt 2 ]; then
+    printf 'Unsupported fusion-second-opinion arguments: %s\nUse no argument for high, a level, a key selector, or "<level> <key-selector>" in any order.\nSupported levels: medium, high, xhigh. Supported key selectors: key:<name>, env:<VAR>.\n' "$CONFIG_ARG" >&2
     exit 2
   fi
 
-  case "${1:-}" in
-    medium|high|xhigh)
-      FUSION_LEVEL="$1"
-      ;;
-    *)
-      printf 'Unsupported fusion-second-opinion level: %s\nSupported levels: medium, high, xhigh. Default: high.\n' "$1" >&2
-      exit 2
-      ;;
-  esac
+  for arg in "$@"; do
+    case "$arg" in
+      medium|high|xhigh)
+        if [ -n "$FUSION_LEVEL_SET" ]; then
+          printf 'Duplicate fusion-second-opinion level: %s\nUse only one of: medium, high, xhigh.\n' "$arg" >&2
+          exit 2
+        fi
+        FUSION_LEVEL="$arg"
+        FUSION_LEVEL_SET="1"
+        ;;
+      key:*)
+        if [ -n "$OPENROUTER_KEY_SELECTOR" ]; then
+          printf 'Duplicate fusion-second-opinion key selector: %s\nUse only one key selector.\n' "$arg" >&2
+          exit 2
+        fi
+        key_name="${arg#key:}"
+        if [ -z "$key_name" ]; then
+          printf 'Empty fusion-second-opinion key selector: %s\nUse key:<name>, for example key:work.\n' "$arg" >&2
+          exit 2
+        fi
+        case "$key_name" in
+          *[!A-Za-z0-9_]*)
+            printf 'Unsupported fusion-second-opinion key selector: %s\nkey:<name> may contain only letters, numbers, and underscores.\n' "$arg" >&2
+            exit 2
+            ;;
+        esac
+        OPENROUTER_KEY_SELECTOR="$arg"
+        key_suffix="$(printf '%s' "$key_name" | tr '[:lower:]' '[:upper:]')"
+        OPENROUTER_KEY_VAR="OPENROUTER_API_KEY_$key_suffix"
+        ;;
+      env:*)
+        if [ -n "$OPENROUTER_KEY_SELECTOR" ]; then
+          printf 'Duplicate fusion-second-opinion key selector: %s\nUse only one key selector.\n' "$arg" >&2
+          exit 2
+        fi
+        env_name="${arg#env:}"
+        if [ -z "$env_name" ]; then
+          printf 'Empty fusion-second-opinion env selector: %s\nUse env:<VAR>, for example env:OPENROUTER_API_KEY_WORK.\n' "$arg" >&2
+          exit 2
+        fi
+        OPENROUTER_KEY_SELECTOR="$arg"
+        OPENROUTER_KEY_VAR="$env_name"
+        ;;
+      *)
+        printf 'Unsupported fusion-second-opinion argument: %s\nSupported levels: medium, high, xhigh. Supported key selectors: key:<name>, env:<VAR>.\n' "$arg" >&2
+        exit 2
+        ;;
+    esac
+  done
 fi
 PACKET_PATH="/var/folders/.../fusion-second-opinion.AbC123/packet.md"
 OUT_PATH="/var/folders/.../fusion-second-opinion.AbC123/output.txt"
@@ -203,16 +264,36 @@ PROXY_LOG="/var/folders/.../fusion-second-opinion.AbC123/proxy.log"
 PROXY_PATH="/var/folders/.../fusion-second-opinion.AbC123/openrouter-fusion-proxy.py"
 
 OPENROUTER_CREDENTIALS="${XDG_CONFIG_HOME:-$HOME/.config}/openrouter/credentials.env"
-if [ -z "${OPENROUTER_API_KEY:-}" ] && [ -r "$OPENROUTER_CREDENTIALS" ]; then
+
+case "$OPENROUTER_KEY_VAR" in
+  [A-Za-z_]*[A-Za-z0-9_]|[A-Za-z_])
+    case "$OPENROUTER_KEY_VAR" in
+      *[!A-Za-z0-9_]*)
+        printf 'Invalid OpenRouter API key environment variable name: %s\n' "$OPENROUTER_KEY_VAR" >&2
+        exit 2
+        ;;
+    esac
+    ;;
+  *)
+    printf 'Invalid OpenRouter API key environment variable name: %s\n' "$OPENROUTER_KEY_VAR" >&2
+    exit 2
+    ;;
+esac
+
+eval "OPENROUTER_SELECTED_KEY=\${$OPENROUTER_KEY_VAR:-}"
+if [ -z "$OPENROUTER_SELECTED_KEY" ] && [ -r "$OPENROUTER_CREDENTIALS" ]; then
   set -a
   . "$OPENROUTER_CREDENTIALS"
   set +a
+  eval "OPENROUTER_SELECTED_KEY=\${$OPENROUTER_KEY_VAR:-}"
 fi
 
-if [ -z "${OPENROUTER_API_KEY:-}" ]; then
-  echo "OPENROUTER_API_KEY is not set. Export it or store it in $OPENROUTER_CREDENTIALS before running fusion-second-opinion." >&2
+if [ -z "$OPENROUTER_SELECTED_KEY" ]; then
+  printf '%s is not set. Export it or store it in %s before running fusion-second-opinion.\n' "$OPENROUTER_KEY_VAR" "$OPENROUTER_CREDENTIALS" >&2
   exit 2
 fi
+export OPENROUTER_API_KEY="$OPENROUTER_SELECTED_KEY"
+unset OPENROUTER_SELECTED_KEY
 
 if ! command -v codex >/dev/null 2>&1; then
   echo "codex CLI is required for fusion-second-opinion because it provides local read-only repository tools." >&2
