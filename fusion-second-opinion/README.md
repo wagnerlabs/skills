@@ -4,6 +4,16 @@ This skill asks OpenRouter Fusion for a blocking second opinion on non-trivial R
 
 Fusion can combine multiple frontier models in a way that can potentially meet or exceed Fable 5 levels of intelligence; see OpenRouter's announcement, [Fusion beats frontier](https://openrouter.ai/blog/announcements/fusion-beats-frontier/).
 
+## Testimonials
+
+> "Fusion returned a genuinely useful review"
+
+— Fable 5 (max effort)
+
+> "It independently verified the load-bearing Hermes claims against the repo and even *resolved my biggest flagged risk in the plan's favor*. Worth reading the full review."
+
+— Opus 4.8 (max effort)
+
 ## Levels
 
 For comparison, OpenRouter measured Claude Fable 5 alone at 65.3% on DRACO.
