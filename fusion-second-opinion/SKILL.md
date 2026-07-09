@@ -1,6 +1,6 @@
 ---
 name: fusion-second-opinion
-description: "Sends a time-expensive, blocking review packet to OpenRouter Fusion via Codex CLI in a read-only sandbox, using selectable medium/high/xhigh model panels and optional OpenRouter API key selectors. Defaults to high: Opus 4.8, GPT-5.5, and Gemini 3.1 Pro synthesized by Opus 4.8. Use when the user asks or when an agent judges that an independent multi-model second opinion would materially improve non-trivial RCA, plans, implementations, documents, or analysis responses; generally at most once per non-trivial task/artifact."
+description: "Sends a time-expensive, blocking review packet to OpenRouter Fusion via Codex CLI in a read-only sandbox, using selectable medium/high/xhigh model panels and optional OpenRouter API key selectors. Defaults to high: Opus 4.8, GPT-5.6-Sol (max effort), and Gemini 3.1 Pro synthesized by Opus 4.8. Use when the user asks or when an agent judges that an independent multi-model second opinion would materially improve non-trivial RCA, plans, implementations, documents, or analysis responses; generally at most once per non-trivial task/artifact."
 ---
 
 # Fusion second opinion
@@ -22,8 +22,8 @@ High is the default. To request a different level, invoke this skill with one le
 | Level | Synthesizer | Analysis panel |
 |---|---|---|
 | `medium` | `anthropic/claude-opus-4.8` | `google/gemini-3-flash-preview`, `moonshotai/kimi-k2.6`, `deepseek/deepseek-v4-pro` |
-| `high` (default) | `anthropic/claude-opus-4.8` | `anthropic/claude-opus-4.8`, `openai/gpt-5.5`, `google/gemini-3.1-pro-preview` |
-| `xhigh` | `anthropic/claude-opus-4.8` | `anthropic/claude-opus-4.8`, `openai/gpt-5.5`, `google/gemini-3.1-pro-preview`, `deepseek/deepseek-v4-pro` |
+| `high` (default) | `anthropic/claude-opus-4.8` | `anthropic/claude-opus-4.8`, `openai/gpt-5.6-sol` (max effort), `google/gemini-3.1-pro-preview` |
+| `xhigh` | `anthropic/claude-opus-4.8` | `anthropic/claude-opus-4.8`, `openai/gpt-5.6-sol` (max effort), `google/gemini-3.1-pro-preview`, `deepseek/deepseek-v4-pro` |
 
 ## OpenRouter API key selection
 
@@ -187,8 +187,8 @@ Fusion analysis of a full repo can take several minutes. Complex reviews sometim
 This workflow uses Codex as the local read-only repository agent and a temporary localhost proxy to inject OpenRouter's Fusion plugin. The proxy configures the selected Fusion level:
 
 - `medium`: Gemini 3 Flash, Kimi K2.6, and DeepSeek V4 Pro synthesized by Opus 4.8
-- `high` (default): Opus 4.8, GPT-5.5, and Gemini 3.1 Pro synthesized by Opus 4.8
-- `xhigh`: Opus 4.8, GPT-5.5, Gemini 3.1 Pro, and DeepSeek V4 Pro synthesized by Opus 4.8
+- `high` (default): Opus 4.8, GPT-5.6-Sol (max effort), and Gemini 3.1 Pro synthesized by Opus 4.8
+- `xhigh`: Opus 4.8, GPT-5.6-Sol (max effort), Gemini 3.1 Pro, and DeepSeek V4 Pro synthesized by Opus 4.8
 
 Run this as a shell command. Set `SCENARIO` to match the packet, optionally set `FUSION_LEVEL` by invoking the skill with `medium`, `high`, or `xhigh`, optionally select a key with `key:<name>` or `env:<VAR>`, and substitute the literal packet, output, log, and proxy paths printed during setup.
 
@@ -320,12 +320,12 @@ FUSION_LEVELS = {
     ],
     "high": [
         "anthropic/claude-opus-4.8",
-        "openai/gpt-5.5",
+        "openai/gpt-5.6-sol",
         "google/gemini-3.1-pro-preview",
     ],
     "xhigh": [
         "anthropic/claude-opus-4.8",
-        "openai/gpt-5.5",
+        "openai/gpt-5.6-sol",
         "google/gemini-3.1-pro-preview",
         "deepseek/deepseek-v4-pro",
     ],
@@ -357,6 +357,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         try:
             payload = json.loads(body.decode("utf-8")) if body else {}
             payload["plugins"] = [FUSION_PLUGIN]
+            payload["reasoning"] = {"effort": "max"}
             body = json.dumps(payload).encode("utf-8")
         except Exception:
             pass

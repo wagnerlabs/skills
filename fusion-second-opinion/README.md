@@ -20,8 +20,8 @@ For comparison, OpenRouter measured Claude Fable 5 alone at 65.3% on DRACO.
 
 | Level | Panel | DRACO score |
 |---|---|---|
-| `xhigh` | Opus 4.8 + GPT-5.5 + Gemini 3.1 Pro + DeepSeek V4 Pro, synthesized by Opus 4.8 | Untested |
-| `high` (default) | Opus 4.8 + GPT-5.5 + Gemini 3.1 Pro, synthesized by Opus 4.8 | 68.3% |
+| `xhigh` | Opus 4.8 + GPT-5.6-Sol (max effort) + Gemini 3.1 Pro + DeepSeek V4 Pro, synthesized by Opus 4.8 | Untested |
+| `high` (default) | Opus 4.8 + GPT-5.6-Sol (max effort) + Gemini 3.1 Pro, synthesized by Opus 4.8 | 68.3% |
 | `medium` | Gemini 3 Flash + Kimi K2.6 + DeepSeek V4 Pro, synthesized by Opus 4.8 | 64.7% |
 
 ## API Keys
