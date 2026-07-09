@@ -1,6 +1,6 @@
 ---
 name: gpt-second-opinion
-description: "Sends a time-expensive, blocking review packet to GPT-5.5 via the Codex CLI, pointed at the full repo in read-only sandbox mode. Use when the user asks or when an agent judges that an independent second opinion would materially improve non-trivial RCA, plans, implementations, documents, or analysis responses; generally at most once per non-trivial task/artifact. Once invoked, the current task must pause until the second-opinion process is complete and considered."
+description: "Sends a time-expensive, blocking review packet to GPT-5.6-Sol at maximum reasoning effort via the Codex CLI, pointed at the full repo in read-only sandbox mode. Use when the user asks or when an agent judges that an independent second opinion would materially improve non-trivial RCA, plans, implementations, documents, or analysis responses; generally at most once per non-trivial task/artifact. Once invoked, the current task must pause until the second-opinion process is complete and considered."
 ---
 
 # GPT second opinion
@@ -171,8 +171,8 @@ else
 fi
 
 cd "$REPO_ROOT" && codex exec \
-  -m gpt-5.5 \
-  -c model_reasoning_effort=xhigh \
+  -m gpt-5.6-sol \
+  -c model_reasoning_effort=max \
   -c approval_policy=never \
   --sandbox read-only \
   -C "$REPO_ROOT" \
