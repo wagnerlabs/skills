@@ -1,6 +1,6 @@
 ---
 name: fusion-second-opinion
-description: "Sends a time-expensive, blocking review packet to OpenRouter Fusion via Codex CLI in a read-only sandbox, using selectable medium/high/xhigh model panels and optional OpenRouter API key selectors. Defaults to high: Opus 4.8, GPT-5.6-Sol (max effort), and Gemini 3.1 Pro synthesized by Opus 4.8. Use when the user asks or when an agent judges that an independent multi-model second opinion would materially improve non-trivial RCA, plans, implementations, documents, or analysis responses; generally at most once per non-trivial task/artifact."
+description: "Sends a time-expensive, blocking review packet to OpenRouter Fusion via Codex CLI in a read-only sandbox, using selectable medium/high/xhigh model panels and optional OpenRouter API key selectors. Defaults to high: Opus 4.8, GPT-5.6-Sol (max effort), and Gemini 3.1 Pro synthesized by Opus 4.8. Use when the user asks or when an agent judges that an independent multi-model second opinion would materially improve non-trivial RCA, plans, implementations, documents, or analysis responses; generally at most once per non-trivial task/artifact. Once invoked, the current task must pause until the intended review is verified as substantively complete and considered; repair and rerun a fixable incomplete pass, and do not continue after an unremediable one unless the user explicitly waives the review."
 ---
 
 # Fusion second opinion
@@ -10,10 +10,30 @@ description: "Sends a time-expensive, blocking review packet to OpenRouter Fusio
 - Run this skill when the user explicitly asks.
 - You may also use it, at your discretion, for non-trivial artifacts where an independent multi-model review would materially improve quality.
 - This skill is time-expensive and optional by default. It is highly recommended after a non-trivial implementation plan is ready for review, before implementing.
-- Once this skill is invoked for a task/artifact, it is **blocking for that task**: do not proceed with the fix, implementation, plan revision, document finalization, user-facing answer, or other reviewed work until the packet has been built and validated, Fusion has returned its output, you have read the output, and you have decided which feedback to adopt.
+- Once this skill is invoked for a task/artifact, it is **blocking for that task**: do not proceed with the fix, implementation, plan revision, document finalization, user-facing answer, or other reviewed work until the packet has been built and validated, Fusion has returned its output, you have verified that Fusion actually completed the intended review, you have read the full output, and you have decided which feedback to adopt.
 - Do **not** run this skill in parallel while continuing the same workstream. It is acceptable to use a background process only to avoid tool timeouts, but you must wait for completion and consume the review output before advancing the task under review.
-- If the second-opinion run cannot be completed, explicitly tell the user it could not be run before proceeding; do not silently continue as if the blocking review happened.
+- If the intended second-opinion review cannot be completed after safe, in-scope remediation is exhausted, stop the reviewed work and report the failure to the user. Do not proceed unless a valid review later completes or the user explicitly tells you to continue without it.
 - Default frequency: at most once per non-trivial task. You may run it once more for a materially different downstream artifact with important differences, such as an implementation that significantly diverged from the reviewed plan. Avoid reruns for minor edits, small follow-ups, or unchanged artifacts.
+
+## Review completion gate
+
+A finished subprocess is not necessarily a finished review. This gate closes the loophole where the command ran but the intended review did not; it does not expand an ordinary review beyond its requested scope or require rechecking incidental background. Before treating this skill as complete, verify all of the following:
+
+- The Fusion command exited successfully and produced non-empty, substantive output with exactly one normalized `REVIEW STATUS: COMPLETE` marker and no `REVIEW STATUS: INCOMPLETE` marker within its first five non-empty lines.
+- The proxy log proves that the configured Fusion plugin was injected and that the plugin-injected POST received a successful upstream response. A model's own claim that its panel ran is not sufficient execution evidence.
+- The output identifies the concrete repository target and artifacts Fusion inspected and does not disclose any required item as uninspected.
+- The output substantively addresses the entire requested scenario and scope. Fusion must have used the correct packet, transcript, repository or diff, and every referenced plan, implementation, document, analysis, or image needed for the review. For a two-phase scenario, both phases must be present.
+- Fusion independently checks the code, analysis, and agent-supplied factual claims, test results, or conclusions that materially support the review target or verdict against primary evidence. The packet must identify those load-bearing items and their verification paths. User-stated premises remain user inputs unless the requested review expressly asks Fusion to verify them.
+- If evidence, credentials, permissions, or tools needed for a material check are unavailable, the review is incomplete. A limitation affecting only a non-material point may be disclosed without invalidating an otherwise complete review, but Fusion must not use that unverified point to support its verdict.
+- Neither the output nor the execution evidence reveals an authentication, credential, permission, tool, path, repository, context, panel-model, synthesis, or other model failure affecting the required scope. Treat a misunderstood packet or scenario, a skipped material target or required panel contribution, generic feedback that does not engage with the target, a partial review, or a stated inability to inspect a material or required item as incomplete even if the command exited zero or some useful feedback was returned.
+
+Exactly one `REVIEW STATUS: COMPLETE` marker and no `REVIEW STATUS: INCOMPLETE` marker within the first five non-empty lines is necessary but not sufficient. Read the full output and relevant logs, then validate the review's substance before taking any post-review action. Your own inspection or verification cannot substitute for a missing part of Fusion's review.
+
+If the completion gate fails:
+
+1. If the cause can be corrected without user input or new authority, fix it and rerun the second-opinion review. This is required, not optional. Examples include repairing the packet or prompt, correcting a scenario or path, provisioning already-authorized read-only access, adding a complete raw export plus the exact query or analysis command, converting a validator to a write-free form, or preparing a faithful disposable review copy when a material check must write inside its checkout. Do not repeat an unchanged failing command. Validate the replacement output and logs against this gate. Attempts required to obtain the first valid review do not count as additional discretionary reviews under the default-frequency rule.
+2. If Fusion reviewed only part of the intended scope or a required panel/synthesis step failed, treat the whole pass as incomplete. Repair and rerun it; do not fill the gap yourself and continue.
+3. Only after safe, in-scope remediation is exhausted, if the review still cannot be completed as intended or the remaining remediation requires unavailable credentials, user input, new authority, or an external state change, **stop the task under review**. This is a pause for the user's decision, not permission to finish the work. Tell the user what failed, what was attempted, and what is needed, and provide the run-directory evidence when available. Do not implement, revise, finalize, or return the reviewed artifact as though the review occurred. Resume only after a valid review completes or the user explicitly directs you to proceed without it.
 
 ## Fusion levels
 
@@ -129,6 +149,12 @@ Tell Fusion what to look at. Examples:
 - "Review commit `<sha>`."
 - "Review branch diff `<base>...HEAD`."
 
+Frame the target as work Fusion must independently perform, not as conclusions or verification already established. Explicitly identify only the agent-supplied claims, test results, analysis, or code behavior that materially supports the target or verdict; do not present those load-bearing items as trusted background.
+
+For each load-bearing item, give Fusion a viable verification path before the first run. Prefer direct, already-authorized read-only access to the primary source. When that is unavailable or unnecessary, provide complete primary evidence that permits an independent check, such as the untouched raw export, exact query or request and parameters, analysis command or script, and relevant documentation. A summary of the invoking agent's own verification is not enough. Preflight the actual Fusion invocation—not merely the main agent's environment—to ensure it can read the evidence and run the required safe checks. Never put secrets in the packet or logs.
+
+Do not knowingly launch a review that lacks a required capability merely to obtain `INCOMPLETE`. If a viable path can be prepared without user input or new authority, prepare it first. If an unforeseen access or tooling problem appears in the output, repair it and rerun under the completion-gate procedure. If no viable path can be prepared without the user's help or new authority, stop before the run and report what is needed rather than narrowing the scope.
+
 ### Full verbatim user transcript
 
 All user-typed messages from this session, verbatim and in chronological order. Include only the text the user actually typed — do not expand @-mentions, and do not include attached context blocks (open editor tabs, inlined file contents, skill text, git diffs, or other automatically injected context). If the user attached images, note where each image appeared in the conversation and list its resolved absolute path under the generated per-run images directory so Fusion can read it.
@@ -176,6 +202,7 @@ If structural validation fails, rewrite the packet from scratch at the same gene
 - **Duplicate user messages** — the same message appearing more than once (from context reloading, conversation resumption, etc.). This means deduplication before writing was incomplete.
 - **Redundant sections** — the same information stated in multiple places (e.g., the review target restating what's already in the transcript, or the artifact section repeating the review target).
 - **Accidentally included context** — attached context blocks, expanded @-mentions, inlined file contents, skill text, or git diffs that leaked into the user transcript.
+- **Agent claims framed as established facts** — factual claims, test results, or conclusions from the invoking agent that the review should independently verify but that the packet presents as trusted background.
 - **Bloat** — large code excerpts, diff dumps, or repository summaries that Fusion doesn't need (it reads the repo directly through Codex).
 
 If any content issues are found, rewrite the packet from scratch at the same generated packet path — do not patch the file.
@@ -192,8 +219,12 @@ This workflow uses Codex as the local read-only repository agent and a temporary
 
 Run this as a shell command. Set `SCENARIO` to match the packet, optionally set `FUSION_LEVEL` by invoking the skill with `medium`, `high`, or `xhigh`, optionally select a key with `key:<name>` or `env:<VAR>`, and substitute the literal packet, output, log, and proxy paths printed during setup.
 
+Inspect the original repository directly by default: keep `REVIEW_ROOT="$REPO_ROOT"` and use the Codex `read-only` sandbox. `read-only` prevents modification of the original repository; it does not hide the repository or substitute a copy for direct inspection. Prefer checks that do not write, such as piping generated input directly to a validator. Only when a material check inherently must write inside its checkout, create a faithful disposable copy of the exact review target under the second-opinion run directory, verify that its diff or artifact hashes match the source target, point the packet and `REVIEW_ROOT` to that copy, and use `workspace-write` only for the disposable copy. Do not use a copy merely for reading or write-free checks, and never make the original repository writable merely to complete a review. If a faithful disposable target cannot be prepared safely, treat the check as unavailable under the completion gate.
+
 ```sh
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+REVIEW_ROOT="$REPO_ROOT"
+SANDBOX_MODE="read-only"
 SCENARIO="independent-rca"  # set to: independent-rca, plan-review, post-implementation-review, document-review, or analysis-review
 FUSION_LEVEL="high"
 FUSION_LEVEL_SET=""
@@ -348,22 +379,35 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         return
 
+    def audit(self, event, **fields):
+        record = {"event": event, **fields}
+        print(json.dumps(record, sort_keys=True), file=sys.stderr, flush=True)
+
     def do_GET(self):
-        self.forward(None)
+        self.forward(None, "upstream_get_response")
 
     def do_POST(self):
         length = int(self.headers.get("Content-Length", "0") or 0)
         body = self.rfile.read(length) if length else b""
         try:
             payload = json.loads(body.decode("utf-8")) if body else {}
+            if not isinstance(payload, dict):
+                raise TypeError("request body must be a JSON object")
             payload["plugins"] = [FUSION_PLUGIN]
             payload["reasoning"] = {"effort": "max"}
             body = json.dumps(payload).encode("utf-8")
-        except Exception:
-            pass
-        self.forward(body)
+            self.audit(
+                "fusion_plugin_injected",
+                level=FUSION_LEVEL,
+                synthesizer=SYNTHESIZER_MODEL,
+                analysis_models=FUSION_LEVELS[FUSION_LEVEL],
+            )
+        except Exception as error:
+            self.audit("fusion_plugin_injection_failed", error=f"{type(error).__name__}: {error}")
+            return self.respond(500, b"Fusion plugin injection failed", {})
+        self.forward(body, "fusion_upstream_response")
 
-    def forward(self, body):
+    def forward(self, body, success_event):
         key = os.environ.get("OPENROUTER_API_KEY")
         if not key:
             return self.respond(500, b"OPENROUTER_API_KEY is not set", {})
@@ -381,10 +425,15 @@ class Handler(http.server.BaseHTTPRequestHandler):
         request = urllib.request.Request(url, data=body, headers=headers, method=self.command)
         try:
             with urllib.request.urlopen(request, timeout=900) as response:
-                self.respond(response.status, response.read(), response.headers)
+                response_body = response.read()
+                self.audit(success_event, status=response.status)
+                self.respond(response.status, response_body, response.headers)
         except urllib.error.HTTPError as error:
-            self.respond(error.code, error.read(), error.headers)
+            error_body = error.read()
+            self.audit("upstream_http_error", status=error.code)
+            self.respond(error.code, error_body, error.headers)
         except Exception as error:
+            self.audit("upstream_error", error=f"{type(error).__name__}: {error}")
             message = f"{type(error).__name__}: {error}".encode("utf-8")
             self.respond(502, message, {})
 
@@ -417,6 +466,9 @@ else
   PROMPT="Read the review packet appended below from stdin. You are reviewing a completed implementation. If the packet references image files, read them. Inspect the repository directly using your read-only tools and use independent judgment. Evaluate correctness, safety, maintainability, and fidelity to the plan or user requirements. Return: verdict, key issues, recommended changes, missing tests or checks, and any questions for the user."
 fi
 
+COMPLETION_REQUIREMENT='Before returning, verify that you actually read and evaluated the complete intended review target. Independently check the code, analysis, and agent-supplied claims or results that materially support your verdict against primary evidence; do not accept them as established background. Do not expand this requirement to incidental facts outside the requested review scope. User-stated premises remain inputs unless the packet expressly asks you to verify them. Use your read-only shell tools to run safe local validators or tests that are material to the verdict. If a load-bearing item cannot be checked because required evidence, credentials, permissions, or tools are unavailable, the review is incomplete; identify the precise missing capability so the caller can repair it and rerun. A limitation affecting only a non-material point may be disclosed, but do not use that point to support your verdict. Within the first five non-empty lines, write exactly one REVIEW STATUS: COMPLETE line and no REVIEW STATUS: INCOMPLETE line only if every required part was reviewed and every load-bearing item was independently checked; otherwise write exactly one REVIEW STATUS: INCOMPLETE line and no REVIEW STATUS: COMPLETE line. Then identify the concrete repository target, artifacts, checks, and primary evidence you inspected and disclose anything you could not access, evaluate, or verify. Never label a partial review complete.'
+PROMPT="$PROMPT $COMPLETION_REQUIREMENT"
+
 PORT="$(python3 - << 'PY'
 import socket
 s = socket.socket()
@@ -431,13 +483,13 @@ PROXY_PID="$!"
 trap 'kill "$PROXY_PID" 2>/dev/null || true' EXIT
 sleep 1
 
-cd "$REPO_ROOT" && codex exec \
+cd "$REVIEW_ROOT" && codex exec \
   --ephemeral \
   --ignore-user-config \
   --ignore-rules \
   --skip-git-repo-check \
-  --sandbox read-only \
-  -C "$REPO_ROOT" \
+  --sandbox "$SANDBOX_MODE" \
+  -C "$REVIEW_ROOT" \
   -m openrouter/fusion \
   -c 'approval_policy="never"' \
   -c 'model_provider="openrouter_fusion_proxy"' \
@@ -446,16 +498,42 @@ cd "$REPO_ROOT" && codex exec \
   "$PROMPT" \
   < "$PACKET_PATH" \
   > "$CODEX_LOG" 2>&1
+
+REVIEW_EXIT="$?"
+if [ "$REVIEW_EXIT" -ne 0 ]; then
+  printf 'Fusion second-opinion command failed with exit code %s. The review is incomplete; inspect the Codex and proxy logs.\n' "$REVIEW_EXIT" >&2
+  exit "$REVIEW_EXIT"
+fi
+if ! grep -q '"event": "fusion_plugin_injected"' "$PROXY_LOG"; then
+  echo "Fusion proxy did not record successful plugin injection. The review is incomplete." >&2
+  exit 3
+fi
+if ! grep -Eq '"event": "fusion_upstream_response".*"status": 2[0-9][0-9]' "$PROXY_LOG"; then
+  echo "Fusion proxy did not record a successful upstream response for the plugin-injected POST. The review is incomplete." >&2
+  exit 3
+fi
+if [ ! -s "$OUT_PATH" ]; then
+  echo "Fusion second-opinion output is empty. The review is incomplete; inspect the Codex and proxy logs." >&2
+  exit 3
+fi
+REVIEW_WINDOW="$(awk 'NF { print; seen++; if (seen == 5) exit }' "$OUT_PATH" | tr -d '\r' | sed -E 's/^[-[:space:]#>*_`~]+//; s/[-[:space:]*_`~.]+$//')"
+REVIEW_COMPLETE_COUNT="$(printf '%s\n' "$REVIEW_WINDOW" | grep -Fxc 'REVIEW STATUS: COMPLETE' || true)"
+REVIEW_INCOMPLETE_COUNT="$(printf '%s\n' "$REVIEW_WINDOW" | grep -Fxc 'REVIEW STATUS: INCOMPLETE' || true)"
+if [ "$REVIEW_COMPLETE_COUNT" -ne 1 ] || [ "$REVIEW_INCOMPLETE_COUNT" -ne 0 ]; then
+  echo "Fusion second-opinion did not provide exactly one COMPLETE marker and no INCOMPLETE marker within its first five non-empty lines. Inspect the output and logs, repair the cause, and rerun." >&2
+  exit 3
+fi
 ```
 
 ## After the review
 
-1. Tell the user the second-opinion run directory path so they can inspect the packet, output, and logs if needed.
-2. Read the generated output path, for example `/var/folders/.../fusion-second-opinion.AbC123/output.txt`.
-3. Fusion's feedback is advisory. Use your own judgment throughout.
-4. For `independent-rca`: compare Fusion's RCA with your own. Evaluate both and use your best judgment for the fix.
-5. For `plan-review` and `post-implementation-review`: apply only material improvements to correctness, safety, maintainability, or clarity.
-6. For `document-review` and `analysis-review`: compare Fusion's independent analysis (Phase 1) with your own. Where conclusions diverge, evaluate both on their merits. Correct any fidelity issues Fusion flagged — places where your output diverged from or added to what the user actually said. Apply improvements to clarity, logic, completeness, and actionability only where material.
-7. **If Fusion's feedback raises questions needing user input or preference, ask the user rather than making assumptions.**
-8. Briefly note any material changes you adopted from the review.
-9. If the Fusion review could not be run, say that explicitly before proceeding.
+1. Read the generated output path, for example `/var/folders/.../fusion-second-opinion.AbC123/output.txt`, and inspect the Codex and proxy logs for execution or panel failures.
+2. Apply the review completion gate before doing anything else. If it fails, repair and rerun or stop and report as required above; do not continue with the remaining steps on the strength of an incomplete pass.
+3. Once a valid review exists, tell the user the successful second-opinion run directory path so they can inspect the packet, output, and logs if needed.
+4. If an earlier attempt failed the completion gate and was repaired, briefly tell the user what failed and what changed before the successful rerun.
+5. Fusion's completed feedback is advisory. Use your own judgment throughout.
+6. For `independent-rca`: compare Fusion's RCA with your own. Evaluate both and use your best judgment for the fix.
+7. For `plan-review` and `post-implementation-review`: apply only material improvements to correctness, safety, maintainability, or clarity.
+8. For `document-review` and `analysis-review`: compare Fusion's independent analysis (Phase 1) with your own. Where conclusions diverge, evaluate both on their merits. Correct any fidelity issues Fusion flagged — places where your output diverged from or added to what the user actually said. Apply improvements to clarity, logic, completeness, and actionability only where material.
+9. **If Fusion's feedback raises questions needing user input or preference, ask the user rather than making assumptions.**
+10. Briefly note any material changes you adopted from the completed review.
