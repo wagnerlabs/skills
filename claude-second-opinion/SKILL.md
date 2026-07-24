@@ -1,6 +1,6 @@
 ---
 name: claude-second-opinion
-description: "Sends a time-expensive, blocking review packet to Claude Opus 4.8 via the CLI on max effort by default, with Claude Fable 5 available explicitly, pointed at the full repo in read-only mode. Use when the user asks or when an agent judges that an independent second opinion would materially improve non-trivial RCA, plans, implementations, documents, or analysis responses; generally at most once per non-trivial task/artifact. Once invoked, the current task must pause until the intended review is verified as substantively complete and considered; repair and rerun a fixable incomplete pass, and do not continue after an unremediable one unless the user explicitly waives the review."
+description: "Sends a time-expensive, blocking review packet to Claude Opus 5 via the CLI on max effort by default, with Claude Opus 4.8 and Claude Fable 5 available explicitly, pointed at the full repo in read-only mode. Use when the user asks or when an agent judges that an independent second opinion would materially improve non-trivial RCA, plans, implementations, documents, or analysis responses; generally at most once per non-trivial task/artifact. Once invoked, the current task must pause until the intended review is verified as substantively complete and considered; repair and rerun a fixable incomplete pass, and do not continue after an unremediable one unless the user explicitly waives the review."
 ---
 
 # Claude second opinion
@@ -40,13 +40,14 @@ If the completion gate fails:
 /claude-second-opinion [model] [effort]
 ```
 
-- `/claude-second-opinion` — uses Opus 4.8 with `max` effort (default)
-- `/claude-second-opinion opus` — uses Opus 4.8 with `max` effort
-- `/claude-second-opinion opus xhigh` — uses Opus 4.8 with `xhigh` effort
+- `/claude-second-opinion` — uses Opus 5 with `max` effort (default)
+- `/claude-second-opinion opus` — uses Opus 5 with `max` effort
+- `/claude-second-opinion opus xhigh` — uses Opus 5 with `xhigh` effort
+- `/claude-second-opinion opus-4.8` — uses Opus 4.8 with `max` effort
 - `/claude-second-opinion fable` — uses Fable 5 with `xhigh` effort
 - `/claude-second-opinion fable max` — uses Fable 5 with `max` effort
 
-Supported models are `opus` / `opus-4.8` and `fable` / `fable-5`. Supported effort values are `xhigh` and `max`. If you pass only an effort value, it applies to the default Opus 4.8 model.
+Supported models are `opus` / `opus-5`, `opus-4.8`, and `fable` / `fable-5`. Supported effort values are `xhigh` and `max`. If you pass only an effort value, it applies to the default Opus 5 model.
 
 Use one of these scenarios:
 
@@ -206,19 +207,23 @@ SCENARIO="independent-rca"  # set to: independent-rca, plan-review, post-impleme
 PACKET_PATH="/var/folders/.../claude-second-opinion.AbC123/packet.md"
 OUT_PATH="/var/folders/.../claude-second-opinion.AbC123/output.txt"
 
-MODEL="claude-opus-4-8"
+MODEL="claude-opus-5"
 EFFORT="max"
 CONFIG_ARG="{{args}}"
 if [ -n "$CONFIG_ARG" ]; then
   set -- $CONFIG_ARG
   if [ "$#" -gt 2 ]; then
-    printf 'Unsupported claude-second-opinion arguments: %s\nUse no argument for Opus 4.8 max, an effort only, or "<model> <effort>".\n' "$CONFIG_ARG" >&2
+    printf 'Unsupported claude-second-opinion arguments: %s\nUse no argument for Opus 5 max, an effort only, or "<model> <effort>".\n' "$CONFIG_ARG" >&2
     exit 2
   fi
 
   case "${1:-}" in
-    opus|opus-4.8|opus-4-8|claude-opus-4.8|claude-opus-4-8)
-      MODEL="claude-opus-4-8"
+    opus|opus-5|claude-opus-5)
+      MODEL="claude-opus-5"
+      EFFORT="${2:-max}"
+      ;;
+    opus-4.8|opus-4-8|claude-opus-4.8|claude-opus-4-8)
+      MODEL="claude-opus-5"
       EFFORT="${2:-max}"
       ;;
     fable|fable-5|claude-fable-5)
@@ -230,7 +235,7 @@ if [ -n "$CONFIG_ARG" ]; then
       EFFORT="$1"
       ;;
     *)
-      printf 'Unsupported claude-second-opinion model or effort: %s\nSupported models: opus, opus-4.8, fable, fable-5. Supported efforts: xhigh, max.\n' "$1" >&2
+      printf 'Unsupported claude-second-opinion model or effort: %s\nSupported models: opus, opus-5, opus-4.8, fable, fable-5. Supported efforts: xhigh, max.\n' "$1" >&2
       exit 2
       ;;
   esac
@@ -244,7 +249,9 @@ case "$EFFORT" in
     ;;
 esac
 
-if [ "$MODEL" = "claude-opus-4-8" ] && [ "$EFFORT" != "max" ]; then
+if [ "$MODEL" = "claude-opus-5" ] && [ "$EFFORT" != "max" ]; then
+  printf 'Warning: Opus 5 defaults to max effort; using explicitly requested effort: %s\n' "$EFFORT" >&2
+elif [ "$MODEL" = "claude-opus-4-8" ] && [ "$EFFORT" != "max" ]; then
   printf 'Warning: Opus 4.8 defaults to max effort; using explicitly requested effort: %s\n' "$EFFORT" >&2
 elif [ "$MODEL" = "claude-fable-5" ] && [ "$EFFORT" != "xhigh" ]; then
   printf 'Warning: Fable 5 defaults to xhigh effort; using explicitly requested effort: %s\n' "$EFFORT" >&2
