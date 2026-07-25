@@ -1,6 +1,6 @@
 ---
 name: claude-second-opinion
-description: "Sends a time-expensive, blocking review packet to Claude Opus 5 via the CLI on max effort by default, with Claude Opus 4.8 and Claude Fable 5 available explicitly, pointed at the full repo in read-only mode. Use when the user asks or when an agent judges that an independent second opinion would materially improve non-trivial RCA, plans, implementations, documents, or analysis responses; generally at most once per non-trivial task/artifact. Once invoked, the current task must pause until the intended review is verified as substantively complete and considered; repair and rerun a fixable incomplete pass, and do not continue after an unremediable one unless the user explicitly waives the review."
+description: "Sends a time-expensive, blocking review packet to Claude Opus 5 via the CLI on max effort with fast mode enabled by default, with a per-run standard-speed opt-out plus Claude Opus 4.8 and Claude Fable 5 available explicitly, pointed at the full repo in read-only mode. Use when the user asks or when an agent judges that an independent second opinion would materially improve non-trivial RCA, plans, implementations, documents, or analysis responses; generally at most once per non-trivial task/artifact. Once invoked, the current task must pause until the intended review is verified as substantively complete and considered; repair and rerun a fixable incomplete pass, and do not continue after an unremediable one unless the user explicitly waives the review."
 ---
 
 # Claude second opinion
@@ -37,17 +37,20 @@ If the completion gate fails:
 ## Usage
 
 ```
-/claude-second-opinion [model] [effort]
+/claude-second-opinion [model] [effort] [--no-fast]
 ```
 
-- `/claude-second-opinion` — uses Opus 5 with `max` effort (default)
-- `/claude-second-opinion opus` — uses Opus 5 with `max` effort
-- `/claude-second-opinion opus xhigh` — uses Opus 5 with `xhigh` effort
-- `/claude-second-opinion opus-4.8` — uses Opus 4.8 with `max` effort
-- `/claude-second-opinion fable` — uses Fable 5 with `xhigh` effort
-- `/claude-second-opinion fable max` — uses Fable 5 with `max` effort
+- `/claude-second-opinion` — uses Opus 5 with `max` effort and fast mode (default)
+- `/claude-second-opinion --no-fast` — uses Opus 5 with `max` effort at standard speed
+- `/claude-second-opinion opus` — uses Opus 5 with `max` effort and fast mode
+- `/claude-second-opinion opus xhigh --no-fast` — uses Opus 5 with `xhigh` effort at standard speed
+- `/claude-second-opinion opus-4.8` — uses Opus 4.8 with `max` effort and fast mode
+- `/claude-second-opinion fable` — uses Fable 5 with `xhigh` effort and fast mode
+- `/claude-second-opinion fable max --no-fast` — uses Fable 5 with `max` effort at standard speed
 
 Supported models are `opus` / `opus-5`, `opus-4.8`, and `fable` / `fable-5`. Supported effort values are `xhigh` and `max`. If you pass only an effort value, it applies to the default Opus 5 model.
+Fast mode is enabled by default. Pass `--no-fast` anywhere in the argument list to disable it for that run. The skill passes the choice as a command-line session setting, so it does not change the caller's persistent Claude settings.
+The run command also skips Claude Code's client-side fast-mode organization preflight. This lets setup-token and gateway users reach the authoritative Anthropic API check instead of receiving a false "disabled by your organization" result. The API still rejects fast requests when the organization actually disables them.
 
 Use one of these scenarios:
 
@@ -209,33 +212,59 @@ OUT_PATH="/var/folders/.../claude-second-opinion.AbC123/output.txt"
 
 MODEL="claude-opus-5"
 EFFORT="max"
+FAST_MODE="true"
+MODEL_ARG=""
+EFFORT_ARG=""
 CONFIG_ARG="{{args}}"
 if [ -n "$CONFIG_ARG" ]; then
   set -- $CONFIG_ARG
-  if [ "$#" -gt 2 ]; then
-    printf 'Unsupported claude-second-opinion arguments: %s\nUse no argument for Opus 5 max, an effort only, or "<model> <effort>".\n' "$CONFIG_ARG" >&2
-    exit 2
-  fi
+  for ARG in "$@"; do
+    case "$ARG" in
+      --no-fast)
+        FAST_MODE="false"
+        ;;
+      --*)
+        printf 'Unsupported claude-second-opinion option: %s\nSupported option: --no-fast.\n' "$ARG" >&2
+        exit 2
+        ;;
+      *)
+        if [ -z "$MODEL_ARG" ]; then
+          MODEL_ARG="$ARG"
+        elif [ -z "$EFFORT_ARG" ]; then
+          EFFORT_ARG="$ARG"
+        else
+          printf 'Unsupported claude-second-opinion arguments: %s\nUse no argument for Opus 5 max with fast mode, an effort only, "<model> <effort>", and optionally --no-fast.\n' "$CONFIG_ARG" >&2
+          exit 2
+        fi
+        ;;
+    esac
+  done
 
-  case "${1:-}" in
+  case "$MODEL_ARG" in
+    "")
+      ;;
     opus|opus-5|claude-opus-5)
       MODEL="claude-opus-5"
-      EFFORT="${2:-max}"
+      EFFORT="${EFFORT_ARG:-max}"
       ;;
     opus-4.8|opus-4-8|claude-opus-4.8|claude-opus-4-8)
-      MODEL="claude-opus-5"
-      EFFORT="${2:-max}"
+      MODEL="claude-opus-4-8"
+      EFFORT="${EFFORT_ARG:-max}"
       ;;
     fable|fable-5|claude-fable-5)
       MODEL="claude-fable-5"
-      EFFORT="${2:-xhigh}"
+      EFFORT="${EFFORT_ARG:-xhigh}"
       ;;
     xhigh|max)
-      MODEL="claude-opus-4-8"
-      EFFORT="$1"
+      MODEL="claude-opus-5"
+      EFFORT="$MODEL_ARG"
+      if [ -n "$EFFORT_ARG" ]; then
+        printf 'Unsupported claude-second-opinion arguments: %s\nAn effort-only invocation accepts one effort value plus optional --no-fast.\n' "$CONFIG_ARG" >&2
+        exit 2
+      fi
       ;;
     *)
-      printf 'Unsupported claude-second-opinion model or effort: %s\nSupported models: opus, opus-5, opus-4.8, fable, fable-5. Supported efforts: xhigh, max.\n' "$1" >&2
+      printf 'Unsupported claude-second-opinion model or effort: %s\nSupported models: opus, opus-5, opus-4.8, fable, fable-5. Supported efforts: xhigh, max.\n' "$MODEL_ARG" >&2
       exit 2
       ;;
   esac
@@ -256,6 +285,8 @@ elif [ "$MODEL" = "claude-opus-4-8" ] && [ "$EFFORT" != "max" ]; then
 elif [ "$MODEL" = "claude-fable-5" ] && [ "$EFFORT" != "xhigh" ]; then
   printf 'Warning: Fable 5 defaults to xhigh effort; using explicitly requested effort: %s\n' "$EFFORT" >&2
 fi
+
+FAST_MODE_SETTINGS="$(printf '{"fastMode": %s}' "$FAST_MODE")"
 
 # Claude execution mode. Keep normal Claude Code behavior available for
 # personal terminals while defaulting Hermes workers/profiles to --bare.
@@ -292,7 +323,9 @@ fi
 COMPLETION_REQUIREMENT='Before returning, verify that you actually read and evaluated the complete intended review target. Independently check the code, analysis, and agent-supplied claims or results that materially support your verdict against primary evidence; do not accept them as established background. Do not expand this requirement to incidental facts outside the requested review scope. User-stated premises remain inputs unless the packet expressly asks you to verify them. Use your read-only shell tools to run safe local validators or tests that are material to the verdict. If a load-bearing item cannot be checked because required evidence, credentials, permissions, or tools are unavailable, the review is incomplete; identify the precise missing capability so the caller can repair it and rerun. A limitation affecting only a non-material point may be disclosed, but do not use that point to support your verdict. Within the first five non-empty lines, write exactly one REVIEW STATUS: COMPLETE line and no REVIEW STATUS: INCOMPLETE line only if every required part was reviewed and every load-bearing item was independently checked; otherwise write exactly one REVIEW STATUS: INCOMPLETE line and no REVIEW STATUS: COMPLETE line. Then identify the concrete repository target, artifacts, checks, and primary evidence you inspected and disclose anything you could not access, evaluate, or verify. Never label a partial review complete.'
 PROMPT="$PROMPT $COMPLETION_REQUIREMENT"
 
-cd "$REPO_ROOT" && claude ${CLAUDE_BARE_FLAG:+$CLAUDE_BARE_FLAG} -p \
+cd "$REPO_ROOT" && CLAUDE_CODE_SKIP_FAST_MODE_ORG_CHECK=1 \
+  claude ${CLAUDE_BARE_FLAG:+$CLAUDE_BARE_FLAG} -p \
+  --settings "$FAST_MODE_SETTINGS" \
   --model "$MODEL" \
   --effort "$EFFORT" \
   --permission-mode default \
