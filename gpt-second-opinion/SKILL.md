@@ -1,6 +1,6 @@
 ---
 name: gpt-second-opinion
-description: "Sends a time-expensive, blocking review packet to GPT-5.6-Sol at maximum reasoning effort via the Codex CLI, pointed at the full repo in read-only sandbox mode. Use when the user asks or when an agent judges that an independent second opinion would materially improve non-trivial RCA, plans, implementations, documents, or analysis responses; generally at most once per non-trivial task/artifact. Once invoked, the current task must pause until the intended review is verified as substantively complete and considered; repair and rerun a fixable incomplete pass, and do not continue after an unremediable one unless the user explicitly waives the review."
+description: "Sends a time-expensive, blocking review packet to GPT-5.6-Sol at maximum reasoning effort via the Codex CLI, using OpenAI fast mode by default and pointed at the full repo in read-only sandbox mode. Use when the user asks or when an agent judges that an independent second opinion would materially improve non-trivial RCA, plans, implementations, documents, or analysis responses; generally at most once per non-trivial task/artifact. Once invoked, the current task must pause until the intended review is verified as substantively complete and considered; repair and rerun a fixable incomplete pass, and do not continue after an unremediable one unless the user explicitly waives the review."
 ---
 
 # GPT second opinion
@@ -14,6 +14,17 @@ description: "Sends a time-expensive, blocking review packet to GPT-5.6-Sol at m
 - Do **not** run this skill in parallel while continuing the same workstream. It is acceptable to use a background process only to avoid tool timeouts, but you must wait for completion and consume the review output before advancing the task under review.
 - If the intended second-opinion review cannot be completed after safe, in-scope remediation is exhausted, stop the reviewed work and report the failure to the user. Do not proceed unless a valid review later completes or the user explicitly tells you to continue without it.
 - Default frequency: at most once per non-trivial task. You may run it once more for a materially different downstream artifact with important differences, such as an implementation that significantly diverged from the reviewed plan. Avoid reruns for minor edits, small follow-ups, or unchanged artifacts.
+
+## Usage
+
+```text
+/gpt-second-opinion [--no-fast]
+```
+
+- `/gpt-second-opinion` — uses GPT-5.6-Sol with `max` effort in OpenAI fast mode (default)
+- `/gpt-second-opinion --no-fast` — uses GPT-5.6-Sol with `max` effort at standard speed
+
+Fast mode is enabled by default. Pass `--no-fast` to disable it for a specific review. The skill passes the choice as command-line configuration for that invocation, so it does not change the caller's persistent Codex settings.
 
 ## Review completion gate
 
@@ -190,6 +201,19 @@ SCENARIO="independent-rca"  # set to: independent-rca, plan-review, post-impleme
 PACKET_PATH="/var/folders/.../gpt-second-opinion.AbC123/packet.md"
 OUT_PATH="/var/folders/.../gpt-second-opinion.AbC123/output.txt"
 
+FAST_MODE="true"
+SERVICE_TIER="fast"
+CONFIG_ARG="{{args}}"
+if [ -n "$CONFIG_ARG" ]; then
+  set -- $CONFIG_ARG
+  if [ "$#" -ne 1 ] || [ "$1" != "--no-fast" ]; then
+    printf 'Unsupported gpt-second-opinion arguments: %s\nSupported option: --no-fast.\n' "$CONFIG_ARG" >&2
+    exit 2
+  fi
+  FAST_MODE="false"
+  SERVICE_TIER="default"
+fi
+
 if [ "$SCENARIO" = "independent-rca" ]; then
   PROMPT="Read the review packet appended below from stdin. You are performing an independent root-cause analysis. The packet contains only the user transcript and a pointer to the repository — do NOT treat it as containing a prior analysis. If the packet references image files, read them. Inspect the repository directly. Return: your root-cause hypothesis, supporting evidence from the codebase, suggested fix approach, confidence level, and any questions for the user that would help narrow the diagnosis."
 elif [ "$SCENARIO" = "plan-review" ]; then
@@ -208,6 +232,8 @@ PROMPT="$PROMPT $COMPLETION_REQUIREMENT"
 cd "$REVIEW_ROOT" && codex exec \
   -m gpt-5.6-sol \
   -c model_reasoning_effort=max \
+  -c features.fast_mode="$FAST_MODE" \
+  -c service_tier="$SERVICE_TIER" \
   -c approval_policy=never \
   --sandbox "$SANDBOX_MODE" \
   -C "$REVIEW_ROOT" \
