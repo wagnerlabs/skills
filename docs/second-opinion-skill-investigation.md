@@ -7,6 +7,8 @@
 - Ensure a completed review remains advisory: the invoking agent decides which feedback to adopt, and reviewer disagreement alone never requires a rerun.
 - Update `claude-second-opinion`, `gpt-second-opinion`, and the tracked `fusion-second-opinion` consistently if the evidence supports a change.
 - Preserve unrelated working-tree changes, especially the untracked `fusion-second-opinion/` files.
+- Route single-model second opinions toward a different model provider from the invoking agent to improve diversity of perspective.
+- Reserve Fusion for high-stakes, explicitly user-requested reviews because its multi-model panel consumes more quota or credits.
 
 ## User decisions and constraints
 
@@ -14,6 +16,9 @@
 - A reviewer must not become the authority over the main agent's plan or implementation.
 - Feedback does not need to be accepted wholesale, and a valid review should not be rerun merely to seek agreement or approval.
 - Operational success requires the reviewer to access every critical/load-bearing related material. A zero exit code, `COMPLETE` marker, or useful partial review does not override a disclosed inability to inspect such material.
+- GPT/OpenAI-based agents should generally prefer `claude-second-opinion`; non-GPT/OpenAI agents are the primary audience for `gpt-second-opinion`.
+- Claude/Anthropic-based agents should generally prefer `gpt-second-opinion`; non-Claude/Anthropic agents are the primary audience for `claude-second-opinion`.
+- Agents must never invoke `fusion-second-opinion` autonomously. Run it only when the user explicitly requests Fusion.
 
 ## Completed
 
@@ -36,14 +41,23 @@
 - Clarified that “could not access X” is an operational failure requiring remediation and rerun when X is critical/load-bearing, even if the remainder of the feedback is useful.
 - Preserved the distinction between inaccessible referenced material and an omission within the reviewed artifact that should be reported as feedback.
 - Revalidated all three skills after the clarification.
+- Added cross-provider routing so Claude/Anthropic agents prefer GPT reviews and GPT/OpenAI agents prefer Claude reviews when the user has not specified a reviewer.
+- Kept explicit user reviewer choices and concrete task constraints as overrides to the default diversity preference.
+- Made Fusion strictly user-invoked; a generic request for a second opinion no longer authorizes Fusion.
+- Added high-stakes positioning and quota/credit cost guidance for Fusion and its selectable panels.
+- Standardized Fusion cost wording on “credits.”
+- Compressed all three frontmatter descriptions below the validator's 1,024-character limit without removing the routing or authorization rules.
+- Revalidated all three updated skills, embedded launch blocks, semantic routing invariants, and the final diff.
+- Confirmed no `paid-credit` or equivalent wording remains in the Fusion skill or task ledger.
 
 ## Current work
 
-- Complete.
+- Commit and push the validated provider-routing and Fusion policy update.
 
 ## Remaining work
 
-- None.
+- Stage only the three tracked skill files and this ledger, leaving pre-existing untracked Fusion materials untouched.
+- Commit, push, and verify remote `main`.
 
 ## Blockers
 
@@ -63,6 +77,11 @@
 - Post-clarification `bash -n` passed for all three embedded launch blocks.
 - Focused assertions confirmed all three skills require rerun after loss of critical/load-bearing material while retaining the advisory/no-approval-loop rules.
 - Post-clarification `git diff --check` produced no errors.
+- Provider-routing validation confirmed the reciprocal Claude/GPT preference appears in both metadata and invocation policy.
+- Fusion validation confirmed `User-invoked only`, generic-request rejection, autonomous-use prohibition, and high-stakes cost guidance, with no residual discretionary invocation language.
+- Description lengths are 845 characters for Claude, 800 for GPT, and 784 for Fusion.
+- Final `quick_validate.py`, `bash -n`, semantic assertions, and `git diff --check` all passed.
+- Final terminology scan found no remaining `paid-credit` variants; `git diff --check` passed.
 
 ## Artifacts
 
@@ -73,4 +92,4 @@
 
 ## Single next action
 
-- Deliver the clarified operational-success rule and validation result to the user.
+- Stage the validated tracked changes for commit.

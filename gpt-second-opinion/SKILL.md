@@ -1,6 +1,6 @@
 ---
 name: gpt-second-opinion
-description: "Sends a time-expensive, blocking review packet to GPT-5.6-Sol at maximum reasoning effort via the Codex CLI, using OpenAI fast mode by default and pointed at the full repo in read-only sandbox mode. Use when the user asks or when an agent judges that an independent second opinion would materially improve non-trivial RCA, plans, implementations, documents, or analysis responses; generally at most once per non-trivial task/artifact. Once invoked, pause until the intended review has run with access to every critical/load-bearing related material and been considered; repair and rerun any execution, access, or review-coverage failure, and stop after an unremediable failure unless the user explicitly waives the review. Completed feedback is advisory: reviewer disagreement never requires acceptance, approval, or a rerun."
+description: "Sends a blocking, time-expensive review packet to GPT-5.6-Sol via Codex CLI at maximum reasoning effort and OpenAI fast mode by default, inspecting the repo in a read-only sandbox. Use for non-trivial RCA, plans, implementations, documents, or analyses when the user asks or an agent judges a second opinion worthwhile, generally once per artifact. Primarily for non-OpenAI agents; GPT/OpenAI agents should prefer claude-second-opinion for perspective diversity unless the user requests GPT or task constraints favor it. Once invoked, block until the review has accessed all critical material and been considered; repair and rerun execution, access, or coverage failures, and stop after unremediable failure unless the user waives. Feedback is advisory; disagreement never requires approval or rerun."
 ---
 
 # GPT second opinion
@@ -9,6 +9,8 @@ description: "Sends a time-expensive, blocking review packet to GPT-5.6-Sol at m
 
 - Run this skill when the user explicitly asks.
 - You may also use it, at your discretion, for non-trivial artifacts where an independent review would materially improve quality.
+- Prefer a reviewer from a different model provider to increase diversity of perspective. This skill is generally intended for invoking agents not based on GPT or other OpenAI models.
+- If you are a GPT/OpenAI-based agent and the user has not specified a reviewer, prefer `claude-second-opinion`. Use this skill instead only when the user explicitly requests GPT or a concrete task constraint makes GPT the better reviewer.
 - This skill is time-expensive and optional by default. It is highly recommended after a non-trivial implementation plan is ready for review, before implementing.
 - Once this skill is invoked for a task/artifact, it is **blocking for that task**: do not proceed with the fix, implementation, plan revision, document finalization, user-facing answer, or other reviewed work until the packet has been built and validated, GPT has returned its output, you have verified that GPT actually performed the intended review with access to every critical/load-bearing related material, you have read the full output, and you have independently decided which feedback—if any—to adopt.
 - Do **not** run this skill in parallel while continuing the same workstream. It is acceptable to use a background process only to avoid tool timeouts, but you must wait for completion and consume the review output before advancing the task under review.

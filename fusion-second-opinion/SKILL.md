@@ -1,15 +1,15 @@
 ---
 name: fusion-second-opinion
-description: "Sends a time-expensive, blocking review packet to OpenRouter Fusion via Codex CLI in a read-only sandbox, using selectable medium/high/xhigh model panels and optional OpenRouter API key selectors. Defaults to high: Opus 4.8, GPT-5.6-Sol (max effort), and Gemini 3.1 Pro synthesized by Opus 4.8. Use when the user asks or when an agent judges that an independent multi-model second opinion would materially improve non-trivial RCA, plans, implementations, documents, or analysis responses; generally at most once per non-trivial task/artifact. Once invoked, pause until the intended review has run with access to every critical/load-bearing related material and been considered; repair and rerun any execution, access, or review-coverage failure, and stop after an unremediable failure unless the user explicitly waives the review. Completed feedback is advisory: reviewer disagreement never requires acceptance, approval, or a rerun."
+description: "Sends a blocking, time-expensive review packet to OpenRouter Fusion via Codex CLI in a read-only sandbox, using selectable medium/high/xhigh multi-model panels. User-invoked only: never run autonomously or treat a generic request for a second opinion as Fusion authorization. Use only when the user explicitly requests Fusion for a high-stakes review where multi-model diversity justifies greater quota consumption or credit cost, which varies by panel, generally once per artifact. Once invoked, block until the review has accessed all critical material and been considered; repair and rerun execution, access, panel/synthesis, or coverage failures, and stop after unremediable failure unless the user waives. Feedback is advisory; disagreement never requires approval or rerun."
 ---
 
 # Fusion second opinion
 
 ## Invocation policy
 
-- Run this skill when the user explicitly asks.
-- You may also use it, at your discretion, for non-trivial artifacts where an independent multi-model review would materially improve quality.
-- This skill is time-expensive and optional by default. It is highly recommended after a non-trivial implementation plan is ready for review, before implementing.
+- Run this skill only when the user explicitly requests `fusion-second-opinion` or an OpenRouter Fusion review. A generic request for “a second opinion” does not authorize Fusion.
+- Never invoke this skill autonomously, even when a multi-model review would materially improve quality. Use the Claude/GPT cross-provider routing rules for autonomous second opinions.
+- Reserve Fusion for high-stakes reviews where its multi-model panel and synthesis materially justify the cost. It consumes more quota or credits than a single-model second opinion, and the amount depends on the selected panel level and models.
 - Once this skill is invoked for a task/artifact, it is **blocking for that task**: do not proceed with the fix, implementation, plan revision, document finalization, user-facing answer, or other reviewed work until the packet has been built and validated, Fusion has returned its output, you have verified that Fusion actually performed the intended review with access to every critical/load-bearing related material, you have read the full output, and you have independently decided which feedback—if any—to adopt.
 - Do **not** run this skill in parallel while continuing the same workstream. It is acceptable to use a background process only to avoid tool timeouts, but you must wait for completion and consume the review output before advancing the task under review.
 - If the intended second-opinion review cannot be completed after safe, in-scope remediation is exhausted, stop the reviewed work and report the failure to the user. Do not proceed unless a valid review later completes or the user explicitly tells you to continue without it.
@@ -37,9 +37,9 @@ If the completion gate fails:
 2. If Fusion reviewed only part of the intended scope or a required panel/synthesis step failed, treat the whole pass as incomplete. Repair and rerun it; do not fill the gap yourself and continue.
 3. Only after safe, in-scope remediation is exhausted, if the review still cannot be completed as intended or the remaining remediation requires unavailable credentials, user input, new authority, or an external state change, **stop the task under review**. This is a pause for the user's decision, not permission to finish the work. Tell the user what failed, what was attempted, and what is needed, and provide the run-directory evidence when available. Do not implement, revise, finalize, or return the reviewed artifact as though the review occurred. Resume only after a valid review completes or the user explicitly directs you to proceed without it.
 
-## Fusion levels
+## Fusion levels and cost
 
-High is the default. To request a different level, invoke this skill with one level argument: `medium`, `high`, or `xhigh`.
+Each Fusion run invokes several analysis models plus a synthesizer, so it consumes more quota or credits than the Claude or GPT single-model skills. Cost varies with the selected panel. High is the default; use one level argument—`medium`, `high`, or `xhigh`—when the user requests a different level.
 
 | Level | Synthesizer | Analysis panel |
 |---|---|---|
