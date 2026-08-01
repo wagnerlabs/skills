@@ -49,15 +49,15 @@
 - Compressed all three frontmatter descriptions below the validator's 1,024-character limit without removing the routing or authorization rules.
 - Revalidated all three updated skills, embedded launch blocks, semantic routing invariants, and the final diff.
 - Confirmed no `paid-credit` or equivalent wording remains in the Fusion skill or task ledger.
+- Committed the provider-routing and Fusion policy update as `0839690` and pushed it to remote `main`.
 
 ## Current work
 
-- Commit and push the validated provider-routing and Fusion policy update.
+- Complete.
 
 ## Remaining work
 
-- Stage only the three tracked skill files and this ledger, leaving pre-existing untracked Fusion materials untouched.
-- Commit, push, and verify remote `main`.
+- None.
 
 ## Blockers
 
@@ -82,6 +82,7 @@
 - Description lengths are 845 characters for Claude, 800 for GPT, and 784 for Fusion.
 - Final `quick_validate.py`, `bash -n`, semantic assertions, and `git diff --check` all passed.
 - Final terminology scan found no remaining `paid-credit` variants; `git diff --check` passed.
+- Remote verification resolved `refs/heads/main` to `08396909c0d11763036d29565efff2f6d780739e` after the push.
 
 ## Artifacts
 
@@ -92,4 +93,4 @@
 
 ## Single next action
 
-- Stage the validated tracked changes for commit.
+- Deliver the completed commit and push result to the user.
